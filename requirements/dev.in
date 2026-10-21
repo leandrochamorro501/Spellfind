@@ -1,0 +1,2 @@
+-r models.in
+# Tests use the Python standard library's unittest. No notebook packages required.

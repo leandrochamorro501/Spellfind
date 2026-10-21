@@ -1,0 +1,117 @@
+\section{Trabajo autónomo: mantenimiento, instrumentales e integración real}
+\label{sec:autonomo}
+\textbf{19--20 de octubre de 2026.} Se implementan las actividades que no necesitan
+juicios humanos ni una clave del proveedor. Los informes nuevos se conservan en
+\code{validation/autonomous/}; los bloques anteriores permanecen como evidencia
+histórica. El catálogo del usuario conserva sus 258 canciones: las ingestas de
+prueba se realizan en catálogos aislados.
+
+\subsection{E17/P17/P20: cuotas, retención y restauración}
+Antes se retenían indefinidamente generaciones, trabajos y medios. Ahora hay
+cuotas configurables: catálogo 512 MiB, ingesta 2 GiB y copia 2 GiB por defecto.
+La admisión reserva conservadoramente 300 MiB por trabajador activo y por el
+siguiente trabajo; la cola mantiene su límite de 32 trabajos. Una publicación
+comprueba el uso antes y después de escribir y no cambia el puntero si excede
+la cuota. El guard del trabajo comprueba el uso durante el progreso. No se trata
+de una cuota impuesta por el sistema operativo: la descarga puede escribir antes
+de que un control la detecte; los límites de vídeo y archivo siguen vigentes.
+Los pesos de modelos y las copias se administran aparte del catálogo/ingesta.
+
+\code{python -m maintenance cleanup} sólo muestra el plan. La opción
+\code{--apply} caduca versiones con más de 30 días, conservando al menos las tres
+más recientes y siempre la actual. Conserva medios referenciados por cualquier
+versión retenida; trabajos terminales antiguos y archivos huérfanos pueden
+retirarse. Los directorios y medios se mueven a cuarentena dentro de su raíz;
+el período de recuperación comienza en ese momento. La eliminación permanente
+requiere otra operación explícita, \code{purge-trash --apply}, tras la retención.
+Los enlaces a versiones caducadas dejan de funcionar: es una contrapartida
+del límite de almacenamiento, no una migración transparente de enlaces antiguos.
+No se aplicó una eliminación permanente a datos del usuario.
+
+Las rutas se resuelven dentro de raíces administradas y se rechazan enlaces
+simbólicos y junctions. Si una generación retenida está corrupta se aborta el
+plan, en lugar de suponer que sus medios son prescindibles. El mantenimiento
+requiere una cola sin trabajos activos y toma bloqueos en el mismo orden que
+publicación. Se caduca el historial antes de mover archivos: una caída puede
+dejar archivos sobrantes; no cambia el puntero actual para apuntar a archivos
+eliminados. Las dos bases SQLite no constituyen una transacción distribuida.
+
+\code{backup --path} crea un ZIP con catálogo publicado, medios referenciados y
+ambas bases SQLite serializadas; excluye claves, configuración privada, pesos,
+trabajos temporales y cuarentena. Verifica SHA-256 de cada entrada antes de
+publicar el ZIP. \code{restore --path --destination} exige una carpeta nueva,
+valida inventario, hashes, integridad SQLite, índices y presencia de medios;
+no sobrescribe ni cambia automáticamente el servicio en ejecución. Hay una copia
+real del catálogo actual y una restauración verificada en una carpeta aislada.
+Para una recuperación se configuran ambas rutas restauradas y se reinicia el
+servicio. Los hashes detectan corrupción; no autentican un ZIP de un tercero.
+
+\subsection{E19/P06/P19: instrumentales sin letras ficticias}
+El mapa v1 imponía una fila por posición en ambos índices. El mapa v2 conserva
+un mapa completo de catálogo y mapas independientes para letras y audio. Se
+validan posiciones, IDs únicos, disponibilidad del texto y cobertura acústica.
+Las generaciones v1 siguen siendo legibles, sin reconstruir sus vectores.
+Una canción sin letra no tiene posición ni vector en el índice lírico; se
+mantienen audio y metadatos. Los workers reciben el mapa de su modalidad dentro
+del snapshot fijado, evitando atribuir a una canción el vector de otra.
+
+La API admite \code{instrumental:true}; la interfaz ofrece una casilla con esa
+decisión. Se omiten subtítulos, Whisper y Nomic para ese trabajo y se registra
+que la condición instrumental fue declarada, no verificada acústicamente. Si no
+se declara instrumental, una transcripción vacía continúa produciendo error.
+La búsqueda acústica puede recuperar el registro; una búsqueda lírica no lo
+recupera desde el índice de letras. Un candidato sin texto no recibe aprobación
+lírica por el mero hecho de coincidir en audio. La tarjeta explica la ausencia
+de letra y no presenta el sonido como auditado.
+
+\subsection{E18/P01/P19: entorno y modelos comprobados realmente}
+Se instala \code{.venv-ingestion} separado del entorno histórico. Se resuelven
+las versiones completas en \code{requirements/ingestion.lock}; el cierre de
+dependencias de modelos se actualiza en \code{requirements/models.lock}.
+FFmpeg se aprovisiona desde \code{imageio-ffmpeg} a una ruta local explícita y
+no se cambia el PATH global. Whisper recibe muestras decodificadas a 16 kHz;
+CLAP usa muestras a 48 kHz. Los caches de pesos quedan en \code{.tools/}.
+\code{pip check}, las importaciones y las regresiones se comprueban en el entorno.
+
+La primera inferencia real descubrió una incompatibilidad de Nomic con
+Transformers 5: faltaba \code{get_extended_attention_mask}. La solución limita
+Transformers a la serie 4 compatible, con 4.57.6 verificada. No se parchea código
+descargado ni se oculta la excepción. Se fijan revisiones de Nomic, su código
+remoto y CLAP en \code{requirements/model-revisions.json}. Las publicaciones
+registran esas revisiones locales; no se atribuyen retroactivamente al corpus
+heredado, cuya procedencia exacta sigue sin demostrarse.
+
+La ingesta técnica usa un vídeo de prueba de yt-dlp: descarga real, conversión
+MP3, tres ventanas CLAP y publicación aislada con 259 canciones, 258 vectores
+líricos y 259 acústicos. Nomic genera un vector normalizado de 256 dimensiones
+y Whisper base procesa dos segundos de silencio generado en CPU. El silencio
+comprueba ejecución, no exactitud de transcripción de canciones. Los workers
+reales ejecutan consultas e índices con muestras iniciales y tres muestras
+calientes; éstas pueden usar caché y no equivalen a nuevas inferencias.
+Se registra RSS del proceso. No se mide rendimiento del router/juez ni calidad
+musical a partir de estas comprobaciones.
+El vídeo antiguo estaba retirado; la sustitución se documenta en el
+\href{https://github.com/yt-dlp/yt-dlp/issues/12263}{repositorio de yt-dlp}.
+
+\subsection{Interfaz y documento}
+La prueba de navegador usa cola, publicación y FFmpeg reales con IA de control,
+en un catálogo aislado y con un aviso visible. Comprueba progreso, búsqueda
+simultánea, actualización de conteos, recuperación del último trabajo tras
+recargar y tarjeta instrumental con reproducción. Se guardan capturas y se
+corrige la presentación de la casilla y la conservación de años sin decimales.
+La compilación PDF utiliza MiKTeX; se corrigen saltos de línea de rutas técnicas,
+se resuelven referencias y se revisan páginas renderizadas. El informe de
+compilación distingue esto de las comprobaciones estáticas anteriores.
+
+\subsection{Lo que todavía necesita participación del usuario}
+Configurar \code{GROQ_API_KEY} localmente para evaluar router, juez y refinador
+reales; no compartir la clave en la conversación. Completar y atribuir las
+anotaciones humanas, escuchar las muestras acústicas y revisar las transcripciones
+de música antes de declarar relevancia o fidelidad. Después se compara el
+refinamiento y se decide si su beneficio compensa coste y latencia. El acceso
+a Groq y los juicios humanos no se sustituyen por inferencias de control.
+La política de retención es configurable y conservadora; puede ajustarse al uso
+real sin que eso impida entregar las herramientas y pruebas de mantenimiento.
+
+\subsection{Compatibilidad del proveedor durante la prueba local}
+El 20 de octubre de 2026 se verificó que la credencial permite consultar Groq, pero el modelo Scout configurado devuelve \texttt{model\_not\_found}. Se seleccionó en la configuración local \texttt{openai/gpt-oss-120b}, incluido en los modelos accesibles de la cuenta. También se explicitaron los cuatro nombres de campos obligatorios del planificador y la obligación de conservar las listas vacías: la respuesta anterior empleaba un nombre alternativo incompatible. La consulta ``triste bajo la lluvia produjo un plan válido con estado \texttt{ready}. Esta prueba confirma conexión y contrato, pero no demuestra calidad musical ni valida el flujo completo de búsqueda. Queda pendiente comparar calidad, latencia y coste del modelo con consultas revisadas por personas.

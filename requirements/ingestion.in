@@ -1,0 +1,6 @@
+# Optional ingestion extension. Install ingestion.lock for tested Windows/Python 3.12 versions.
+# Provision FFmpeg from the pinned imageio-ffmpeg package into .tools/ffmpeg/ffmpeg.exe.
+-r models.in
+yt-dlp
+openai-whisper
+imageio-ffmpeg

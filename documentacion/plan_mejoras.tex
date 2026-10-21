@@ -1,0 +1,318 @@
+\section{Plan de mejora reorganizado por prioridad y dependencias}
+\label{sec:plan}
+\textbf{Fecha: 18 de octubre de 2026. Estado: bloques I--V con implementación local; validaciones humanas, musicales y de rendimiento con modelos reales pendientes.}
+Esta secuencia sustituye el orden de ejecución anterior. Los cambios 1--8 ya
+realizados conservan su registro; los puntos originales 9--14 y los IDs
+E01--E12 se mantienen como referencias de trazabilidad. No son listas de
+trabajo adicionales: cada pendiente se integra en una o más actividades P.
+
+Los registros de ejecución están en las secciones~\ref{sec:bloque1},
+\ref{sec:bloque2}, \ref{sec:bloque3}, \ref{sec:bloque4} y~\ref{sec:bloque5}.
+P01--P03 y P05--P08 cuentan con verificación local; P04 tiene protocolo y línea
+base simulada. Las anotaciones y medidas reales permanecen pendientes.
+P09/P11 están implementados; P10 tiene contrato y pruebas, con calibración
+humana pendiente; P12 tiene comparación y política, con utilidad real pendiente.
+P13--P15 están implementados; P16 tiene instrumentación y perfil local con
+índices reales/modelos de control, pendiente de carga y memoria con modelos
+reales. P17--P18 tienen implementación y pruebas locales; P19 tiene adaptador
+opcional y P20 regresiones integradas, con integración real pendiente.
+E13 se añadió tras el bloque II y se
+integra en actividades existentes, sin crear un sexto bloque.
+La revisión posterior confirmó E14 (versionado por reordenación), E15
+(validación JSON omitida en aclaraciones) y E16 (fallos de registro en CP1252).
+Se reasignaron y corrigieron en la continuación: E14 al bloque II/P07
+(identidad del plan), E15 al bloque II/P05/P08 (estado y planificación) y
+E16 al bloque I/P01/P02 (portabilidad e inicialización). No crean un bloque
+adicional ni desplazan P09--P12. E14 también tiene regresiones en P11/P12.
+La evidencia histórica está en \texttt{validation/revision\_block2/}; las
+correcciones y nuevas pruebas, en \texttt{validation/block3/}.
+
+\paragraph{Revisión posterior al bloque V.}
+La auditoría confirmó E13 y aprobaciones \texttt{legacy} sin citas. La corrección
+posterior verifica correspondencia literal o equivalencias revisadas, exige el
+alcance completo de negaciones compuestas y rechaza traducciones no verificadas.
+El juez exige JSON con citas y se abstiene ante formatos antiguos persistentes;
+el orquestador tampoco selecciona una aprobación \texttt{legacy}.
+Estas correcciones locales quedan en bloque II/P07--P08 y bloque III/P10;
+no demuestran fidelidad de lenguaje arbitrario ni calidad musical.
+Ahora la prioridad es anotar y medir P04/P10/P12 y rendimiento real P16.
+La captura previa está en \code{validation/revision_previous_blocks/audit.json};
+la verificación posterior, en \code{validation/pending_fixes/} y
+sección~\ref{sec:correcciones_pendientes}. E14--E16 siguen corregidos;
+no se reabren sin una regresión demostrada. E17--E19 permanecen en sus actividades
+de ingesta, retención y modalidades indicadas en el bloque V.
+La continuación autónoma implementa E17 (cuotas, retención/cuarentena, backup y
+restauración) y E19 (mapas independientes e instrumentales declarados). E18 tiene
+entorno opcional fijado e ingesta técnica real; se corrigió una incompatibilidad
+Nomic/Transformers 5 y se fijan revisiones de pesos/código. La sección~\ref{sec:autonomo}
+registra pruebas reales de workers y la revisión visual/PDF. Continúan pendientes
+el proveedor Groq, las anotaciones humanas y la calidad de transcripción musical.
+
+Se establecen cinco bloques de cuatro actividades. Primero se hace reproducible
+la ejecución y se registra una línea base; después se corrige la interpretación
+y el control; luego se revisan fallos y refinamiento; finalmente se amplían
+producto, operación e ingesta. No se añaden cuatro funciones nuevas sobre una
+base cuyo comportamiento todavía no pueda comprobarse.
+
+\subsection{Bloque I: ejecución verificable y línea base}
+\textbf{Prioridad crítica. Estado: P01--P03 implementados; P04 disponible en modo control, con medición real pendiente.}
+Estas actividades permiten reproducir los problemas y comparar los bloques
+posteriores contra un estado conocido.
+
+\begin{description}
+\item[P01. Entorno limpio y dependencias reproducibles.]
+Separar dependencias directas y de pruebas, resolver versiones compatibles,
+crear configuración de ejemplo e instrucciones de instalación y comprobar
+imports en un entorno nuevo, sin reutilizar la carpeta temporal de esta sesión.
+\textbf{Aceptación:} instalación e imports reproducibles con versiones
+inequívocas. \textbf{Origen:} punto 12 y E11. \textbf{Dependencias:} ninguna.
+
+\item[P02. Contrato HTTP, arranque y configuración.]
+Validar cuerpo JSON y tipos antes de operar sobre ellos; definir estados HTTP,
+inicialización web/WSGI y rutas estables. Separar configuración de desarrollo
+y ejecución del servicio. Probar con Flask real.
+\textbf{Aceptación:} entradas inválidas tienen respuestas controladas y el motor
+se inicializa en los puntos de entrada soportados.
+\textbf{Origen:} punto 12 y E11. \textbf{Dependencia:} P01.
+
+\item[P03. Validación numérica y coherencia de datos.]
+Comprobar dimensiones, normas, valores finitos, vectores nulos, IDs y
+correspondencia entre índices, mapa y catálogo al cargar y antes de buscar.
+\textbf{Aceptación:} los datos incompatibles y consultas degeneradas no producen
+rankings aparentemente válidos. \textbf{Origen:} parte numérica de E10.
+\textbf{Dependencia:} P01.
+
+\item[P04. Línea base y protocolo de evaluación.]
+Fijar corpus y consultas líricas, acústicas, mixtas, literales y negativas,
+etiquetas de referencia, registros y mediciones. Capturar el comportamiento
+actual antes de las siguientes modificaciones; separar modos simulado y real.
+\textbf{Aceptación:} evaluación repetible que registra relevancia, cumplimiento,
+estabilidad, latencia, llamadas y errores; declara métricas aún no ejecutadas
+si faltan modelos o acceso al proveedor.
+\textbf{Origen:} punto 13 y base experimental de E07.
+\textbf{Dependencias:} P01--P03 para la línea base integrada.
+\end{description}
+
+\subsection{Bloque II: intención, modalidades y estado coherente}
+\textbf{Prioridad alta. Estado: implementación y pruebas locales completas.} Se define qué se intenta recuperar, qué evidencia lo
+respalda y quién modifica las decisiones. Es la base de una degradación segura.
+
+\begin{description}
+\item[P05. Propiedad única del estado y las exclusiones.]
+El juez devuelve una decisión y solo el orquestador la aplica. Separar estado
+serializable y recursos efímeros; vincular decisiones a candidato y versión
+de plan, conservando el aislamiento entre solicitudes.
+\textbf{Aceptación:} un único punto de escritura de exclusiones y pruebas de
+invariantes y concurrencia. \textbf{Origen:} E08.
+\textbf{Dependencias:} P02 y P04.
+
+\item[P06. Rutas líricas, acústicas e instrumentales.]
+Definir evidencia y estado de evaluación por modalidad. Permitir búsquedas
+solo audio y canciones instrumentales sin exigir letra. No dirigir cambios
+acústicos a partir de un rechazo lírico sin diagnóstico justificado.
+\textbf{Aceptación:} un instrumental no se excluye por carecer de letra y una
+aprobación lírica no se presenta como validación del sonido.
+\textbf{Origen:} E01 y alcance de validación del punto 11.
+\textbf{Dependencias:} P03--P05.
+
+\item[P07. Restricciones explícitas e hipótesis del modelo.]
+Registrar la procedencia de positivos y negativos; permitir reparar una
+modalidad omitida o un negativo inventado sin borrar restricciones del usuario.
+Definir cuándo un rechazo depende del plan y puede reconsiderarse.
+\textbf{Aceptación:} corregir un error del router no relaja silenciosamente
+una restricción explícita. \textbf{Origen:} E03 y revisión de exclusiones de E01.
+\textbf{Dependencias:} P05--P06.
+
+\item[P08. Fallback fiel a la intención.]
+Usar el contrato y la procedencia de restricciones para preservar lo conocido
+cuando falla el router; tratar explícitamente idioma y modalidades inciertas.
+No asumir que copiar la consulta en las dos ramas conserva su significado.
+\textbf{Aceptación:} fallos del router en consultas con negaciones o en español
+no eliminan silenciosamente restricciones; la degradación queda declarada.
+\textbf{Origen:} E02. \textbf{Dependencias:} P06--P07.
+\end{description}
+
+\subsection{Bloque III: fallos, evaluación y refinamiento fundamentado}
+\textbf{Prioridad alta. Implementación local realizada; validación real pendiente en P10/P12.} Este bloque corrige regresiones de disponibilidad y
+evalúa si conviene seguir refinando, con la línea base ya preparada.
+
+\begin{description}
+\item[P09. Recuperación parcial y continuidad ante fallos.]
+Definir degradación por modalidad, evidencia del plan usado y continuidad con
+candidatos existentes si falla el refinador. Ajustar pesos solo bajo una política
+explícita y probada.
+\textbf{Aceptación:} una rama fallida no borra sin explicación resultados útiles
+de la otra, ni su ausencia se convierte en aprobación.
+\textbf{Origen:} E05. \textbf{Dependencias:} P05--P08.
+\textbf{Estado:} implementado, con degradación por rama y restauración del
+plan/ranking anterior si falla toda la recuperación reformulada.
+
+\item[P10. Juez y evidencia lírica suficiente.]
+Evaluar salida estructurada, abstención, reintento limitado y selección de
+fragmentos más allá de los primeros 3000 caracteres. Calibrar contra juicios
+humanos y mantener estados por candidato.
+\textbf{Aceptación:} medir falsos rechazos/aprobaciones y cubrir evidencia al
+final de una letra sin marcar todo el ranking como evaluado.
+\textbf{Origen:} E06 y parte de evidencia del punto 11.
+\textbf{Dependencias:} P04--P07.
+\textbf{Estado:} contrato estructurado, citas, abstención, cobertura y reintento
+limitado implementados; tasas de error contra juicios humanos aún no medidas.
+
+\item[P11. Presupuestos de recuperación y evaluación.]
+Separar descartes por metadatos, llamadas al juez, refinamientos y ampliación
+del ranking. Determinar qué significa agotamiento sin confundirlo con ausencia
+de canciones válidas en el catálogo completo.
+\textbf{Aceptación:} metadatos incompletos no consumen todos los intentos útiles
+y las búsquedas adicionales tienen un límite verificable.
+\textbf{Origen:} parte de presupuesto de E10.
+\textbf{Dependencias:} P03, P06 y P09--P10.
+\textbf{Estado:} implementado con presupuestos separados y ampliación limitada;
+se informa agotamiento de ventana, sin afirmar agotamiento del catálogo.
+
+\item[P12. Decidir cuándo el refinamiento aporta valor.]
+Comparar baseline corregido y flujo con refinamiento sobre las mismas consultas,
+con coste y calidad. Habilitarlo, limitarlo o retirarlo según evidencia y tipo
+de consulta, manteniendo explícito que el juez actual no escucha audio.
+\textbf{Aceptación:} resultados comparables con dispersión y criterio de
+activación; no declarar superioridad si no aparece en la evaluación.
+\textbf{Origen:} E07 y punto 13.
+\textbf{Dependencias:} P04 y P09--P11.
+\textbf{Estado:} comparación pareada y política experimental implementadas;
+refinamiento desactivado por defecto. La simulación no demuestra relevancia;
+decisión de activación rutinaria pendiente de evidencia real y humana.
+\end{description}
+
+\subsection{Bloque IV: resultados útiles y rendimiento medido}
+\textbf{Prioridad media. P13--P15 implementados; P16 con perfil local y verificación real pendiente.}
+Mantener P10/P12 como verificaciones abiertas, sin declararlas cerradas por
+avanzar en capacidades independientes. La funcionalidad se amplía después de estabilizar la
+semántica y el manejo de errores.
+
+\begin{description}
+\item[P13. Puntuación interpretable y pesos configurables.]
+Exponer contribuciones por modalidad, revisar la fusión y sustituir el porcentaje
+por un score identificado correctamente. Permitir ajustar pesos con validación.
+\textbf{Aceptación:} la UI y API explican el score sin presentarlo como
+probabilidad y los pesos válidos producen resultados reproducibles.
+\textbf{Origen:} punto 9. \textbf{Dependencias:} P04, P06 y P09--P12.
+\textbf{Estado:} fusión por rangos ponderados, contribuciones, pesos validados
+y API v2 sin porcentaje implementados. No demuestra mayor relevancia musical.
+
+\item[P14. Filtros exactos de metadatos.]
+Añadir artista, género y rango de años con semántica explícita antes de la
+selección final; distinguir filtro duro de preferencia semántica.
+\textbf{Aceptación:} los resultados cumplen los filtros y las combinaciones
+sin coincidencias se informan correctamente.
+\textbf{Origen:} punto 10. \textbf{Dependencias:} P03 y P07--P11.
+\textbf{Estado:} filtros exactos antes de fusión/juez, rango inclusivo y opciones
+de catálogo implementados; selección completa para el catálogo actual.
+
+\item[P15. Evidencia y validación visibles por resultado.]
+Mostrar fragmentos relevantes de letras, contribuciones, modalidades evaluadas,
+advertencias y alternativas sin atribuir aprobación a canciones no juzgadas.
+\textbf{Aceptación:} cada tarjeta refleja fielmente la evidencia disponible y
+el alcance de su evaluación. \textbf{Origen:} punto 11, complementando P06/P10.
+\textbf{Dependencias:} P10 y P13--P14.
+\textbf{Estado:} fragmentos con procedencia, contribuciones y alcance por
+candidato visibles; navegador verificado con fixture de control, sin validar sonido.
+
+\item[P16. Optimización con mediciones de carga real.]
+Medir compilación del grafo, caches, codificación, memoria y contención.
+Valorar grafo reutilizable, batch y tamaño de caches solo donde haya beneficio;
+comparar con una máquina de estados simple si procede.
+\textbf{Aceptación:} publicar latencia fría/caliente, consumo y carga concurrente
+sin perder invariantes funcionales.
+\textbf{Origen:} rendimiento de E04/E09 y E07.
+\textbf{Dependencias:} P04, P12 y estado funcional del bloque IV.
+\textbf{Estado:} tiempos, contención y cachés instrumentados; perfil de índices
+reales con encoders/juez de control completado. Inferencia, RSS/GPU y optimización
+real siguen pendientes. Se conservan grafos por solicitud sin nuevas cachés globales.
+\end{description}
+
+\subsection{Bloque V: catálogo actualizable y cierre integral}
+\textbf{Implementación local realizada; validación externa pendiente.} La ingesta se aborda al contar
+con un catálogo coherente y una operación verificable.
+
+\begin{description}
+\item[P17. Snapshots del catálogo e invalidación de caches.]
+Versionar catálogo, mapa e índices, publicar actualizaciones coordinadas y
+definir invalidación o reinicio controlado. Evitar mutaciones de recursos
+compartidos por consumidores.
+\textbf{Aceptación:} ninguna consulta mezcla artefactos de versiones distintas
+y una actualización fallida conserva un snapshot utilizable.
+\textbf{Origen:} coherencia de E09. \textbf{Dependencias:} P03, P05 y P16.
+\textbf{Estado:} snapshots inmutables, publicación transaccional e invalidación por
+versión implementados y probados; véase sección~\ref{sec:bloque5}.
+
+\item[P18. Decidir sobre checkpoints y progreso en vivo.]
+Revisar qué capacidades de C se necesitan realmente. Si se requieren, añadir
+persistencia y streaming sobre estado serializable; si no, registrar por qué
+se difieren. No reinstaurarlas solo por haber existido en un experimento.
+\textbf{Aceptación:} decisión documentada; si se implementan, reanudar o
+transmitir progreso no mezcla sesiones ni expone estados incoherentes.
+\textbf{Origen:} funciones de E04 y serialización de E08.
+\textbf{Dependencias:} P05, P09 y P16.
+\textbf{Estado:} decisión documentada: búsquedas sin checkpoints; ingesta con cola
+SQLite, propietario, lease y progreso consultable. No se reanuda un trabajo vencido.
+
+\item[P19. Ingesta de canciones en segundo plano.]
+Incorporar YouTube, FFmpeg, subtítulos y Whisper cuando corresponda, cálculo de
+embeddings y seguimiento de trabajos; publicar canciones mediante el mecanismo
+de catálogo de P17.
+\textbf{Aceptación:} añadir una canción no bloquea la web, informa progreso/error
+y solo publica datos y vectores completos y coherentes.
+\textbf{Origen:} punto 14. \textbf{Dependencias:} P01--P03 y P17;
+P18 solo si se elige reutilizar su mecanismo de progreso.
+\textbf{Estado:} adaptador y cola implementados, probados con dependencias de
+control. Pendientes ejecución real, entorno opcional fijado e instrumentales sin
+transcripción (E18--E19). No se declara cerrada la aceptación integral.
+
+\item[P20. Validación integrada y cierre de pendientes.]
+Ejecutar recorridos completos de web y consola, ingesta si está habilitada,
+concurrencia, restricciones, fallos y calidad con el entorno reproducible.
+Actualizar instalación, documentación y decisiones de activar o diferir funciones.
+\textbf{Aceptación:} informe reproducible que separa pruebas simuladas y reales,
+beneficios medidos, limitaciones y pendientes no cerrados.
+\textbf{Origen:} cierre integrado de puntos 12--14 y E07/E11.
+\textbf{Dependencias:} actividades previas implementadas o diferidas explícitamente.
+\textbf{Estado:} regresiones locales integradas; calidad musical, inferencia real,
+recuperación ante apagado y operación prolongada siguen pendientes.
+\end{description}
+
+\subsection{Correspondencia con el listado anterior}
+\small
+\begin{longtable}{p{0.24\textwidth}p{0.65\textwidth}}
+\toprule Referencia previa & Nueva actividad de ejecución\\\midrule\endhead
+Punto 9 & P13.\\
+Punto 10 & P14.\\
+Punto 11 & P06, P10 y P15.\\
+Punto 12 & P01--P02 y P20.\\
+Punto 13 & P04, P12 y P20.\\
+Punto 14 & P19, con P17 como requisito de publicación.\\
+E01 & P06--P07.\\
+E02 & P08.\\
+E03 & P07.\\
+E04 & P16 y P18.\\
+E05 & P09.\\
+E06 & P10 y P15.\\
+E07 & P04, P12, P16 y P20.\\
+E08 & P05 y P18.\\
+E09 & P16--P17.\\
+E10 & P03 y P11.\\
+E11 & P01--P02 y P20.\\
+E12 & Seguimiento transversal; no añade una actividad duplicada.\\
+E13 & P10/P12; P15 si se necesita corrección visible de restricciones.\\
+E14 & Bloque II/P07; regresiones en P11/P12. Corregido en la continuación.\\
+E15 & Bloque II/P05/P08. Corregido en la continuación.\\
+E16 & Bloque I/P01/P02. Corregido y probado en CP1252 y UTF-8.\\
+\bottomrule
+\end{longtable}
+\normalsize
+
+\textbf{Regla de avance.} Cada actividad registra implementación, evidencia y
+limitaciones antes de cerrarse. El orden puede ajustarse ante un defecto
+bloqueante demostrado; cualquier cambio conserva IDs y justifica su dependencia.
+Las pruebas y la documentación se actualizan en todos los bloques, no se aplazan
+hasta P20. Las medidas de relevancia real necesitan modelos/proveedor y referencia
+humana; si faltan, esa parte permanece pendiente y no se sustituye por un éxito
+de pruebas simuladas.

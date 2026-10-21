@@ -1,0 +1,161 @@
+\section{Ejecución del bloque IV: P13--P16}
+\label{sec:bloque4}
+\textbf{Fecha: 18 de octubre de 2026.} P13--P15 están implementados y probados
+localmente. P16 incorpora instrumentación y un perfil del runtime con catálogo
+e índices reales y modelos de control; sus mediciones con modelos/proveedor
+reales y memoria completa del proceso siguen pendientes. P04/P10/P12 y E13
+no se consideran cerrados por avanzar en este bloque.
+
+\subsection{P13: puntuación explicable y pesos configurables}
+\textbf{Antes.} Se combinaban scores de workers normalizados por mínimo/máximo
+con una bonificación RRF independiente de los pesos. El resultado se multiplicaba
+por cien y podía superar cien, sin ser una probabilidad. Una rama con peso cero
+podía seguir aportando por la bonificación.
+
+\textbf{Ahora.} \texttt{scoring.py} define una fusión por posición:
+\[
+R_m(d)=\begin{cases}\frac{61}{60+r_m(d)},&d\text{ aparece en la rama }m,\\
+0,&\text{en otro caso},\end{cases}
+\qquad S(d)=w_L R_L(d)+w_A R_A(d).
+\]
+La posición comienza en uno. Los pesos efectivos suman uno entre ramas con peso
+positivo que aportan resultados. Se exponen rango, score bruto del worker,
+score por posición, peso y contribución por canción; las contribuciones suman
+el score final. Los empates se resuelven por ID, de forma determinista.
+
+La API versión 2 elimina \texttt{score\_pct} y añade el método
+\texttt{weighted\_normalized\_rrf\_v2}, rango $[0,1]$ e indicador de que el score
+no es probabilidad. La interfaz presenta decimales y explica el significado.
+Las decisiones del juez pueden priorizar una recomendación frente a otra con
+mayor score: se declara esa política y su motivo por resultado.
+
+Los pesos opcionales de solicitud son dos números finitos entre cero y uno que
+suman uno. Se distinguen pesos solicitados y efectivos, con ajuste explícito
+ante ramas ausentes, vacías o fallidas. Peso cero desactiva la recuperación de
+esa rama, sin eliminar conceptos o restricciones que debe comprobar el juez.
+No se inventa una modalidad cuando el plan carece de consultas para ella.
+
+\textbf{Ventaja y contrapartida.} Se elimina el porcentaje engañoso y el aporte
+de ramas con peso cero. La nueva fusión evita comparar magnitudes de espacios
+distintos, pero descarta diferencias de magnitud dentro de cada ranking y puede
+cambiar el orden respecto a la versión anterior. Los primeros puestos tienden
+a valores cercanos a uno; ello no demuestra relevancia alta. Scores de versiones,
+consultas y ventanas distintas no se comparan como probabilidades. La superioridad
+musical de esta fórmula sigue pendiente de P04/P12; no se infiere de sus contratos.
+
+\subsection{P14: filtros duros por metadatos}
+\textbf{Antes.} No había selección exacta por artista, género o fechas.
+\textbf{Ahora.} \texttt{search\_options.py} valida artista y género completos,
+ignorando mayúsculas y espacios exteriores y normalizando Unicode NFC, sin
+eliminar acentos ni hacer coincidencias parciales. El género procede de
+\texttt{tag}; no se infiere del audio. Los años son enteros y los límites son
+inclusivos. Los filtros se combinan con AND; años ausentes o inválidos no
+satisfacen un filtro temporal. Columnas opcionales ausentes no rompen los
+controles de catálogo.
+
+\texttt{GET /catalog/options} ofrece nombres y límites de años sin letras ni
+llamadas a modelos. Con filtros activos se recupera hasta el tamaño del catálogo
+antes de filtrar cada rama y fusionar la ventana elegible. Así, una canción en
+posición 25 del ranking global puede ser la primera coincidencia filtrada.
+El juez solo recibe candidatos elegibles. Cero coincidencias de metadatos se
+resuelve antes del router, sin consumir modelos, y queda distinguido de una
+consulta semántica sin resultados utilizables.
+
+\textbf{Evidencia y límites.} Pruebas HTTP cubren esa canción fuera del top-10,
+intersección, tipos inválidos, límites inclusivos y ausencia de coincidencias.
+La operación usa un catálogo validado y estable durante el proceso; P17 sigue
+siendo necesario para actualización coordinada. Recuperar todos los candidatos
+es sencillo para 258 canciones, pero aumenta trabajo y memoria al crecer el
+catálogo. Evaluar preselección nativa en el índice o índices de metadatos dentro
+de P16/P17 antes de escalar. La completitud de metadatos tampoco certifica su
+exactitud ni su género acústico.
+
+\subsection{P15: evidencia visible y alcance por candidato}
+\textbf{Antes.} La respuesta descartaba letras completas y la tarjeta mostraba
+principalmente título, score y un estado, sin fragmentos ni contribuciones.
+\textbf{Ahora.} \texttt{result\_evidence.py} selecciona hasta 320 caracteres.
+Prioriza citas estructuradas que ocurren literalmente en la letra. Sin esas
+citas, usa una heurística léxica de las consultas positivas o un fragmento
+inicial, rotulados como orientativos. Conserva offsets del texto original y
+advierte recortes. Las solicitudes puramente acústicas no reciben una supuesta
+prueba lírica. No se envía la letra completa como parte de cada resultado.
+
+Cada tarjeta muestra contribuciones, metadatos, alcance de letra/audio, motivo
+del juez cuando existe y distinción entre recomendación evaluada y alternativa
+recuperada. Se conserva el estado de error de un candidato realmente evaluado;
+no se reemplaza por un falso estado de candidato nunca examinado. Se usa solo
+evidencia de la versión de plan correspondiente. Las decisiones heredadas sin
+citas mantienen esa limitación explícita. El contenido variable se inserta como
+texto DOM, incluyendo títulos, citas y mensajes.
+
+\textbf{Evidencia y límites.} Pruebas cubren citas reales/inventadas, offsets
+Unicode, ausencia de aprobación heredada en alternativas y contexto acústico.
+La web se verificó en un navegador con fixture visiblemente marcado como
+control: catálogo de 258 canciones, rankings y juez simulados, filtros
+combinados, pesos personalizados, año inválido y cero coincidencias. La captura
+\texttt{validation/block4/ui-desktop.jpg} permite revisar el resultado. Hay CSS
+adaptativo; no se certifica una revisión visual móvil. Una coincidencia textual
+o un fragmento orientativo no prueban cumplimiento semántico: E13/P10 siguen abiertos.
+
+\subsection{P16: instrumentación y decisiones basadas en mediciones}
+\textbf{Antes.} No había desglose por construcción del grafo, ejecución,
+presentación, codificación, índice y contención. \textbf{Ahora.} La API informa
+tiempos del servicio y nodos. Las rondas de recuperación registran caché de la
+solicitud, perfil de ejecución de workers y fallos. En un acierto de caché no se
+atribuyen otra vez los tiempos del worker anterior. Los workers miden acceso a
+recursos, espera del bloqueo, codificación/caché, búsqueda FAISS y RRF interno.
+Los perfiles usan contexto de ejecución separado para solicitudes concurrentes.
+Los tiempos internos no incluyen necesariamente serialización HTTP ni red.
+
+\texttt{evaluation/profile.py} ejecuta una primera consulta, 20 consultas
+calientes secuenciales y 20 con dos y con cuatro hilos. Usa los índices FAISS
+y metadatos reales; los encoders reconstruyen vectores existentes y router/juez
+son controles. Por tanto, se mide el runtime local, no inferencia Nomic/CLAP ni
+servicio Groq. Se fija un hilo OpenMP por tarea solo en el experimento. Reporta
+medias, mediana, p95, dispersión, tasa de solicitudes, contención y cachés.
+Cinco solicitudes adicionales miden asignaciones Python con
+\texttt{tracemalloc} en una fase separada, para no sesgar los tiempos calientes
+frente a la primera consulta sin trazado. El total es 66 solicitudes de control.
+
+El experimento verificó identidad de resultados entre las condiciones y
+reutilización de cachés. La memoria trazada excluye tensores nativos, FAISS y
+GPU, y no equivale a RSS; se informa separadamente el payload de vectores del
+catálogo. Las métricas de memoria completa y modelos reales permanecen nulas.
+Los valores y hashes reproducibles están en \texttt{validation/block4/profile.json}.
+
+\textbf{Decisión y pendiente.} Se mantienen grafos por solicitud y cachés
+existentes acotadas; no se introduce un grafo compartido, otra caché global ni
+batching por una aceleración aparente en modelos de control. Un grafo reutilizado
+exigiría separar su caché de cada solicitud y medir invalidación/contención.
+Comparar con máquina de estados simple solo si la compilación pesa realmente en
+la carga final. P16 continúa abierto para carga con modelos, memoria completa y
+optimización demostrada; E04/E09 y P17/P18 conservan su trazabilidad.
+
+\subsection{Archivos, compatibilidad y verificación}
+\texttt{app.py} integra score, filtros, evidencia y mediciones; \texttt{cli.py}
+admite peso lírico, artista, género y años. Se añaden
+\texttt{scoring.py}, \texttt{search\_options.py}, \texttt{result\_evidence.py} y
+\texttt{profiling.py}. Se instrumentan \texttt{workflow.py} y ambos workers.
+La plantilla contiene controles y tarjetas actualizadas. Las pruebas nuevas
+están en \texttt{tests/test\_block4.py}; los informes y capturas, en
+\texttt{validation/block4/}. \texttt{scripts/preview\_block4.py} es exclusivamente
+un fixture local de interfaz, señalado como simulación; no es configuración de
+producción ni evaluación musical.
+
+Se ejecutaron 115 pruebas en CP1252 y 115 en UTF-8. Se mantienen capturas de
+36 simulaciones sin refinamiento y 36 con él, sin modificar las consultas
+históricas ni sustituir juicios humanos. La evaluación real sigue bloqueada
+cuando falta la clave. El perfil adicional no descarga pesos ni llama al
+proveedor. No hay dependencias nuevas. Las fuentes TeX se verifican por
+inclusiones y referencias; no se certifica una nueva compilación PDF.
+
+Los clientes deben migrar de \texttt{score\_pct} a \texttt{score} y sus
+contribuciones; el endpoint sigue admitiendo solicitudes antiguas con solo
+\texttt{query}. La firma de consola comparte los mismos contratos de opciones.
+Los informes anteriores conservan fórmulas y snapshots de su fecha: no comparar
+scores numéricos entre métodos como si compartieran escala semántica.
+
+El siguiente bloque de implementación es P17--P20. Permanecen pendientes las
+validaciones reales de P04/P10/P12/P16 y la fidelidad E13. El bloque IV aporta
+transparencia y controles, sin atribuirse relevancia o rendimiento de modelos
+todavía no medidos.

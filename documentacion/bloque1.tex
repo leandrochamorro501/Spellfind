@@ -1,0 +1,147 @@
+\section{Ejecución del bloque I: P01--P04}
+\label{sec:bloque1}
+\textbf{Fecha: 18 de octubre de 2026.} Este bloque prepara una base verificable
+antes de cambiar la interpretación de consultas o el refinamiento. No implementa
+las rutas instrumentales, recuperación parcial o mejoras de score de bloques
+posteriores. El registro siguiente complementa los cambios históricos 1--8.
+
+\subsection{P01: perfiles y entorno reproducibles}
+\textbf{Antes.} La lista de dependencias mezclaba ejecución, notebooks y
+transitivas de una instalación no reproducida. El instalador mantenía otra
+lista incompleta. La validación anterior dependía de paquetes instalados en
+una carpeta temporal con metadatos superpuestos.
+
+\textbf{Implementado.} Se crearon perfiles directos \code{core.in},
+\code{models.in}, \code{indexing.in} y \code{dev.in} en \code{requirements/}.
+Tras resolver e instalar en un entorno virtual vacío, se generaron cierres
+exactos por plataforma: 55 paquetes en \code{core.lock}, 85 en
+\code{models.lock} y 97 en \code{indexing.lock}. El perfil de desarrollo usa
+el mismo runtime porque las pruebas utilizan unittest. El archivo principal
+\code{requirements.txt} referencia el lock de inferencia, y el instalador
+utiliza esos archivos y ejecuta \code{pip check}.
+
+Se añadió \code{.env.example}, una referencia Python 3.12, configuración
+centralizada y scripts de verificación, generación de locks y aceptación.
+La instalación y sus perfiles se describen en \code{INSTALL.md}. Las rutas
+de datos, prompt y salida del indexador se anclan al proyecto; el archivo
+\code{.env} también se busca en esa carpeta.
+
+\textbf{Evidencia.} Se verificaron 19 imports reales, incluidos Flask, FAISS,
+LangGraph, Torch, Transformers, Sentence Transformers y el indexador. La carga
+de los 258 registros y sus índices se validó sin descargar pesos o datasets.
+Los informes están en \code{validation/block1/}. La reinstalación desde el
+lock en un segundo entorno vacío completó 16 imports de inferencia, salud
+correcta y \code{pip check} sin conflictos. Las 85 versiones del lock coinciden
+exactamente con ese entorno; sus logs y manifiesto se conservan por separado.
+
+\textbf{Por qué mejora.} Hace explícito qué se instala y permite comparar
+versiones inequívocas. No se deduce que elegir versiones más nuevas mejore
+la relevancia; se verifica compatibilidad de imports y control local.
+\textbf{Límites.} El lock cubre Windows x64 y CPython 3.12. No fija revisiones
+de pesos remotos ni hashes de todos los artefactos de distribución; no se
+certifica otra plataforma o la inferencia con pesos reales.
+
+\subsection{P02: fábrica Flask, contrato HTTP y configuración}
+\textbf{Antes.} El endpoint podía operar sobre listas o tipos inválidos antes
+de manejar errores; la importación WSGI no inicializaba el catálogo. El arranque
+activaba debug sin configuración separada.
+
+\textbf{Implementado.} \code{create_app} registra un blueprint e inicializa el
+motor elegido. \code{wsgi.py} expone una instancia para Waitress; el arranque
+local usa host, puerto y debug explícitos, con debug desactivado por defecto.
+La fábrica permite inyectar un motor y desactivar la inicialización en pruebas.
+
+\code{/search} comprueba tipo de contenido, JSON válido, objeto, texto no vacío
+y longitud. Se devuelve 400 para entrada inválida, 413 para cuerpo excesivo,
+503 para motor no listo o error controlado del flujo y 500 para errores
+inesperados. El último caso registra el detalle en el servidor y entrega un
+mensaje público genérico. Límites y agotamiento sin aprobación mantienen estado
+HTTP 200 con advertencia y su causa de terminación.
+
+\code{/health} devuelve 200 solo si el catálogo está listo y 503 si falla.
+Esta salud acredita datos locales, no credenciales ni disponibilidad remota.
+El servicio y la CLI siguen utilizando el mismo grafo.
+
+\textbf{Evidencia.} Pruebas con Flask real cubren plantilla, salud, fábrica,
+JSON malformado, tipos, longitud, cuerpo excesivo, búsqueda válida y estados
+400/413/500/503. Se comprueba también arranque del catálogo real.
+\textbf{Por qué mejora.} Evita errores de tipos no controlados y hace observable
+la indisponibilidad. \textbf{Límites.} No se hizo una prueba de carga de servidor
+ni una búsqueda completa contra Groq. Consumidores que asumían HTTP 200 ante
+un error deben adaptarse al contrato documentado.
+
+\subsection{P03: validez numérica y correspondencia del catálogo}
+\textbf{Antes.} Las consultas podían quedar con norma nula tras sustraer un
+negativo, y la carga no verificaba todos los valores o la coherencia del mapa.
+
+\textbf{Implementado.} \code{vector_validation.py} comprueba forma, dimensión,
+finitud y norma no degenerada de consultas, normalizando en precisión float64
+y entregando un vector float32 contiguo. Los workers validan antes de llamar a
+FAISS y conservan copias independientes de sus caches. Nomic conserva truncado
+a 256 dimensiones; CLAP exige 512. Una consulta degenerada produce error
+explícito, no un ranking sin significado.
+
+Cada índice debe tener dimensión esperada, vectores presentes, estar entrenado
+y usar producto interno. Se inspeccionan sus vectores por bloques: deben ser
+finitos y unitarios con tolerancia de $10^{-3}$. El catálogo valida columnas,
+IDs enteros no negativos y duplicados. El mapa debe cubrir todas las posiciones
+y coincidir exactamente con el orden del catálogo; las cantidades de ambos
+índices y CSV deben coincidir. La fábrica y los workers validan el conjunto
+antes de intentar cargar los modelos.
+
+\textbf{Evidencia.} Las pruebas usan índices FAISS reales y vectores con errores
+de dimensión, métrica, valores NaN/infinito, norma nula y mapa inconsistente.
+La consulta positiva idéntica a la negativa se rechaza antes de buscar.
+Los dos índices locales pasaron las validaciones sobre sus 258 vectores.
+
+\textbf{Por qué mejora.} Evita presentar datos incompatibles como recuperación
+válida. \textbf{Límites y tareas derivadas.} La inspección añade coste de arranque;
+es pequeña para este catálogo y debe medirse al crecer. El formato admite
+reconstrucción de vectores y producto interno; otro tipo de índice necesita
+revisar el validador. No se han resuelto todavía los presupuestos de P11 ni
+la publicación atómica del catálogo de P17.
+
+\subsection{P04: protocolo y línea base de control}
+\textbf{Antes.} Existían pruebas de regresión y resultados históricos, pero no
+una colección local fija para comparar las siguientes modificaciones de forma
+reproducible con hashes de código y datos.
+
+\textbf{Implementado.} \code{evaluation/queries.json} fija 12 consultas, dos por
+categoría: letras, audio, mixtas, literales, negativas e instrumentales.
+El runner permite baseline sin reescritura y flujo con refinamiento, con modos
+simulado y real explícitos. Registra versiones, hashes, planes, rankings,
+estados, exclusiones, trazas, latencia y contadores por etapa. Los fixtures
+de control generan rankings y veredictos deterministas; no son juicios musicales.
+
+Se realizaron tres repeticiones por consulta: 36 corridas sin refinamiento y
+36 con refinamiento simulado, ambas con cero errores, duplicados y reapariciones
+de excluidos. La estabilidad Jaccard fue 1 en este fixture determinista; no
+demuestra estabilidad de un LLM real ni calidad de orden. Las métricas de
+relevancia y coste monetario permanecen nulas, no ceros inventados.
+
+\code{qrels.json} declara juicios humanos pendientes. El protocolo rechaza IDs
+desconocidos, grados inválidos y cobertura completa declarada sin anotar todo
+el catálogo. Recall/nDCG requieren cobertura suficiente; la tasa de violaciones
+requiere etiquetas explícitas. La simulación nunca usa las etiquetas para
+afirmar calidad musical. El modo real se registró como bloqueado por falta
+de clave Groq; no se hicieron llamadas externas.
+
+\textbf{Por qué mejora.} Hace comparables las futuras modificaciones y evita
+confundir regresiones de control con evaluación musical. \textbf{Límites.}
+La línea base corresponde al estado posterior a P01--P03 y anterior a P05,
+no al código original A/B/C. Faltan anotación humana, pesos y mediciones reales;
+esa parte permanece pendiente para P12/P20 y no se da por realizada.
+Los contadores de etapas no incluyen reintentos internos del proveedor y no
+permiten inferir coste monetario.
+
+\subsection{Estado del bloque y tareas que permanecen abiertas}
+P01--P03 tienen implementación y verificación local. P04 tiene protocolo y
+línea base simulada; la evidencia musical real sigue pendiente por los
+requisitos anteriores. No se atribuye mejor relevancia o latencia de inferencia.
+E11 queda cubierto para el entorno y HTTP verificados, manteniendo pendiente
+la validación integral de P20. E10 queda cubierto en su parte numérica;
+presupuestos y exploración siguen en P11. E07 conserva pendiente la comparación
+real del refinador en P12.
+
+La siguiente implementación sigue siendo P05--P08. Las limitaciones anteriores
+se conservan con sus IDs; no se cierran por disponer ahora de más pruebas.

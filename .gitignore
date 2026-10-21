@@ -1,0 +1,72 @@
+# Private configuration and credentials
+.env
+.env.*
+!.env.example
+keys.txt
+*.pem
+*.key
+
+# Local catalogs, lyrics, ingested media and evaluation artifacts
+/data/
+/output/
+/validation/
+/tmp/
+/evaluation/runs/
+*.mp3
+*.wav
+*.flac
+*.mp4
+*.mkv
+*.zip
+*.sqlite
+*.sqlite3
+*.db
+*.db-*
+*.csv
+*.tsv
+*.parquet
+*.npy
+*.npz
+*.index
+*.pkl
+*.pickle
+
+# Downloaded model weights and local tools
+/.tools/
+*.pt
+*.pth
+*.safetensors
+
+# Python environments and generated files
+.venv/
+.venv-*/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+build/
+dist/
+*.egg-info/
+
+# LaTeX build outputs (keep .tex and editable diagrams)
+*.aux
+*.bbl
+*.blg
+*.fdb_latexmk
+*.fls
+*.log
+*.out
+*.pdf
+*.synctex.gz
+*.toc
+
+# Local editor files and unreviewed notebook outputs
+.idea/
+.vscode/
+*.ipynb
+.ipynb_checkpoints/
+.DS_Store
+Thumbs.db

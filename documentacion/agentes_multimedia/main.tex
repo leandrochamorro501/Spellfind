@@ -1,0 +1,156 @@
+\documentclass[11pt,a4paper]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[spanish,es-noshorthands]{babel}
+\usepackage{lmodern}
+\usepackage{geometry}
+\usepackage{xcolor}
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta,positioning,shapes.geometric}
+\usepackage{longtable,tabularx,array}
+\usepackage{hyperref}
+\geometry{margin=2.3cm}
+\hypersetup{colorlinks=true,linkcolor=blue!45!black,urlcolor=blue!45!black}
+\setlength{\parskip}{0.5em}
+\setlength{\parindent}{0pt}
+\title{SPELLFIND: agentes y herramientas para un buscador multimedia}
+\author{Propuesta de diseño para discusión}
+\date{20 de octubre de 2026}
+\begin{document}
+\maketitle
+\begin{abstract}
+Este documento propone adaptar el buscador musical existente para consultar música, películas, videojuegos y pinturas. Se concentra en cómo colaboran el planificador, las herramientas, el juez y el refinador. La separación inicial del módulo musical está implementada; los otros medios y el juicio individual completo siguen propuestos.
+\end{abstract}
+\tableofcontents
+\newpage
+\section{Idea principal}
+La persona escribe lo que desea encontrar. Un agente interpreta la petición; las herramientas recuperan obras y pruebas; un juez revisa cada condición; el sistema presenta resultados con una explicación clara de lo comprobado y de lo que sigue siendo incierto. Los agentes sugieren y explican. La búsqueda, los filtros, los límites y el registro de decisiones siguen reglas programadas.
+
+\textbf{Módulo}: parte especializada en un tipo de obra. \textbf{Herramienta}: función concreta que consulta o analiza datos. \textbf{Evidencia}: dato o fragmento que respalda una afirmación. \textbf{Índice}: estructura que permite hallar obras parecidas con rapidez. \textbf{Contrato}: formato acordado entre partes del programa.
+
+\section{Diagrama del funcionamiento}
+El archivo \texttt{flujo\_agentes.drawio.xml} contiene una versión editable del diagrama para diagrams.net/draw.io. La figura siguiente representa el flujo objetivo. La implementación musical actual conserva internamente su coordinación anterior mientras usa la nueva interfaz de módulo.
+
+\begin{center}
+\resizebox{\textwidth}{!}{%
+\begin{tikzpicture}[node distance=9mm and 10mm, >=Latex,
+ box/.style={draw,rounded corners,align=center,minimum width=33mm,minimum height=10mm,fill=blue!7},
+ check/.style={draw,diamond,aspect=2,align=center,inner sep=2mm,fill=yellow!15},
+ result/.style={draw,rounded corners,align=center,minimum width=35mm,minimum height=10mm,fill=green!10},
+ warn/.style={draw,rounded corners,align=center,minimum width=35mm,minimum height=10mm,fill=orange!13}]
+\node[box] (user) {Consulta de la persona};
+\node[box,right=of user] (planner) {Agente planificador\\medio, intención, condiciones};
+\node[check,right=of planner] (clear) {¿Se entiende?};
+\node[box,above right=of clear] (clarify) {Pedir aclaración};
+\node[box,below right=of clear] (tools) {Herramientas por medio\\buscan candidatos};
+\node[box,right=of tools] (evidence) {Reunir evidencias\\y su origen};
+\node[box,right=of evidence] (judge) {Juez por condición\\cumple / contradice / incierto};
+\node[result,above right=of judge] (show) {Mostrar resultado\\con explicación};
+\node[warn,below right=of judge] (refine) {Refinador acotado\\o fin con límites};
+\draw[->] (user)--(planner); \draw[->] (planner)--(clear);
+\draw[->] (clear)--node[above,sloped]{no} (clarify);
+\draw[->] (clear)--node[above,sloped]{sí} (tools);
+\draw[->] (tools)--(evidence); \draw[->] (evidence)--(judge);
+\draw[->] (judge)--node[above,sloped]{informar} (show);
+\draw[->] (judge)--node[above,sloped]{reintentar si procede} (refine);
+\draw[->] (refine.south) -- ++(0,-9mm) -| (tools.south);
+\end{tikzpicture}}
+\end{center}
+
+\section{Estado de la implementación modular}
+En SPELLFIND ya hay un planificador de consultas musicales, búsqueda por letras y audio, combinación de candidatos, un juez que revisa letras y un refinador experimental. También hay límites de intentos y catálogo versionado. La primera separación utiliza los archivos \texttt{media\_contracts.py} y \texttt{music\_module.py}. El primero define capacidades, condiciones, evidencias y veredictos comunes. El segundo reúne las herramientas y agentes musicales, y traduce su resultado al formato común. \texttt{app.py} crea el módulo; \texttt{workflow.py} llama sus funciones para preparar el plan, recuperar candidatos, evaluarlos y validar un refinamiento. Una prueba con un módulo de película simulado atraviesa el coordinador sin usar campos de letra o audio en su plan; no equivale a una búsqueda real de películas.
+
+La respuesta de búsqueda mantiene el formato musical anterior y añade \texttt{media\_type}, \texttt{common\_plan}, \texttt{media\_capabilities} y \texttt{condition\_verdicts}. La ruta \texttt{/media/capabilities} anuncia solo música: películas, juegos y pinturas aún no están implementados. Una petición con otro \texttt{media\_type} se rechaza de forma explícita. La interfaz muestra el estado individual de condiciones cuando está disponible.
+
+El juez actual aprueba o rechaza el conjunto de requisitos líricos. Solo se proyecta un estado individual \emph{comprobado} si existe exactamente una condición lírica positiva, una cita verificable y cobertura completa del texto. Si hay varias condiciones o una negación, cada condición permanece \emph{no comprobada} a nivel individual aunque el veredicto general exista. El audio queda \emph{no comprobado} individualmente: su similitud de búsqueda no constituye una validación acústica. Esta cautela reduce afirmaciones excesivas, pero no completa todavía el juez por condición previsto abajo.
+
+\textbf{Por qué ayuda:} los agentes y herramientas musicales se consumen a través de un módulo, y las capacidades declaradas impiden anunciar verificaciones que no existen. \textbf{Coste y límite:} el coordinador conserva nombres de campos heredados para no romper la respuesta musical; las cuatro listas del plan y las reglas del refinador musical viven en el adaptador. Antes de conectar películas habrá que crear su catálogo, herramientas y juez por aspecto con evidencia propia.
+
+Se añadieron pruebas de contrato, procedencia, ausencia de prueba acústica, selección a través del módulo y anuncio de capacidades. Las pruebas anteriores de música sirven como comparación de compatibilidad. No se dispone aún de catálogo ni de etiquetas humanas para evaluar otros medios.
+
+\subsection{Cómo incorporar un medio real}
+El nuevo módulo declara sus capacidades y entrega al coordinador funciones para preparar planes, recuperar candidatos, examinar una obra, evaluar lo encontrado y, si procede, revisar el plan. Primero se prueba con datos controlados; después se conecta un catálogo real. Las herramientas deben devolver el origen y el alcance de sus evidencias. Solo entonces el módulo se registra y se anuncia en la interfaz. Así evitamos mostrar ``películas disponibles'' antes de contar con obras y análisis fiables.
+
+El contrato común no impone que todo medio tenga texto y audio. La prueba de película simulada demuestra que el coordinador puede seleccionar una obra con un plan sin campos musicales. El siguiente trabajo real incluye catálogo, filtros propios, evidencias de sinopsis o subtítulos y una evaluación diseñada para esas fuentes. Una sinopsis no permite prometer que una escena concreta aparezca en pantalla.
+
+\subsection{Comprobaciones y riesgo pendiente}
+La batería automática completa pasó con 181 pruebas, incluidas seis nuevas para esta separación. El PDF de este documento se recompiló sin errores ni cajas desbordadas. Esta validación cubre contratos y compatibilidad local; no mide relevancia musical real, latencia del proveedor ni calidad de un segundo medio. Antes de activar un juez por condición habría que reunir ejemplos revisados por personas y comparar abstenciones, errores y afirmaciones sin prueba frente a la versión actual.
+
+\section{Agente planificador}
+\subsection{Entrada y salida}
+Recibe la consulta original. Devuelve un plan con medio solicitado, condiciones positivas y negativas, aspectos buscables, prioridades, dudas y procedencia de cada condición. Por ejemplo, en ``película triste con lluvia, sin violencia'', tristeza, lluvia y ausencia de violencia proceden de la persona; ``drama melancólico'' puede servir como pista propuesta por el modelo, pero no sustituye ninguna condición original.
+
+El plan conserva literalmente las restricciones de la persona. Una hipótesis del modelo puede ampliar términos para recuperar candidatos, pero jamás volverse una exigencia supuestamente expresada por el usuario. Si una ambigüedad cambia la búsqueda de forma importante, el sistema pide una aclaración; si es menor, muestra la interpretación aplicada.
+
+\subsection{Decisión de diseño}
+\textbf{¿Un planificador distinto por medio?} Comenzaría con un planificador común y reglas de capacidades por módulo. Solo separaría planificadores si una evaluación demuestra errores persistentes que el contrato común no resuelve.
+
+\section{Herramientas y módulos}
+\begin{longtable}{p{0.25\textwidth}p{0.45\textwidth}p{0.21\textwidth}}
+\textbf{Herramienta} & \textbf{Función} & \textbf{Límite principal}\\\hline
+Búsqueda de texto & Encuentra letras, sinopsis, diálogos o descripciones parecidas a la consulta. & Parecido no equivale a prueba.\\
+Búsqueda de audio & Busca semejanza acústica cuando hay sonido disponible. & No confirma por sí sola instrumentos o emociones.\\
+Búsqueda de imagen & Busca elementos visibles en imágenes disponibles. & Una imagen no representa toda la obra.\\
+Filtro de catálogo & Aplica año, autor, género u otros datos conocidos. & Solo usa metadatos registrados.\\
+Consulta de evidencia & Entrega el fragmento y la fuente que pueden respaldar una afirmación. & Puede no existir evidencia suficiente.\\
+Capacidades del módulo & Indica qué aspectos pueden buscarse y comprobarse. & Cambia según datos y modelos disponibles.\\
+\end{longtable}
+
+Cada herramienta devuelve el identificador de obra, medio, aspecto consultado, origen del dato, versión del catálogo y, cuando corresponda, segmento de la obra. Música puede ofrecer letra y audio; películas, sinopsis y eventualmente escenas; videojuegos, descripción, historia o imágenes; pinturas, ficha e imagen. La ausencia de un aspecto es válida: una pintura no requiere audio ni una canción instrumental letra.
+
+\textbf{¿Una herramienta general para todo?} Preferiría funciones pequeñas con entradas y salidas verificables. Permiten identificar qué produjo cada afirmación y poner límites claros de tiempo y coste.
+
+\section{Juez de evidencias}
+\subsection{Unidad de decisión}
+El juez recibe la petición original, el plan, un candidato y la evidencia reunida. Examina \emph{cada condición por separado}. Devuelve \textbf{cumple}, \textbf{contradice} o \textbf{no comprobado}, con motivo, evidencia citada y alcance de la revisión. Nunca convierte automáticamente una puntuación de parecido en una afirmación comprobada.
+
+Ejemplo: una sinopsis que no menciona violencia no demuestra que una película carezca de escenas violentas. Esa condición queda ``no comprobada'' mientras no haya evidencia adecuada. Un fragmento de letra puede probar que aparece la palabra lluvia, pero no que el audio tenga sonido de lluvia.
+
+\subsection{Alcance por medio}
+Se comparte el formato del veredicto, pero cambian las instrucciones y pruebas del juez según el aspecto. Una escena visible, un sonido, una línea de diálogo y una mecánica de juego requieren evidencias diferentes. Para gustos subjetivos como ``pintura inquietante'', el juez explica los rasgos observados y mantiene la conclusión como interpretación.
+
+\textbf{¿Un solo juez universal?} Compartiría el contrato y la política de evidencia, con comprobaciones específicas por módulo. Antes de crear varios agentes independientes, mediría si esa separación mejora la precisión.
+
+\section{Coordinador y resultados}
+El coordinador, implementado con reglas, aplica filtros, elige herramientas, respeta presupuestos de llamadas y combina veredictos. Las restricciones explícitas prevalecen sobre una puntuación alta. Una contradicción comprobada descarta al candidato como recomendación que cumple la petición. Un dato insuficiente produce un candidato prometedor con advertencia. Solo se presenta una recomendación comprobada cuando las condiciones exigidas cuentan con pruebas suficientes para el alcance declarado.
+
+Tres niveles visibles: \textbf{comprobado}, \textbf{candidato con límites} y \textbf{descartado}. El número de similitud ordena candidatos comparables; no es una probabilidad de acierto ni puede compararse sin calibración entre música y pintura.
+
+\section{Agente refinador}
+Cuando el juez detecta un fallo concreto, el refinador puede ajustar términos, elegir otra herramienta o buscar un segmento más apropiado. Debe conservar todas las restricciones explícitas. Ante ``canción triste con piano, sin batería'', puede reformular la descripción del sonido, pero no quitar ``sin batería'' para obtener más resultados. Cada cambio queda registrado, tiene pocos intentos y se activa solo si una evaluación real demuestra beneficio. En la implementación actual, el refinamiento musical es experimental y está desactivado por defecto.
+
+\section{Ejemplo completo}
+Consulta: ``Algo tranquilo con lluvia para esta noche; puede ser música o una película''.
+\begin{enumerate}
+\item El planificador conserva ambos medios y las condiciones ``tranquilo'' y ``lluvia''; no presupone si la lluvia debe oírse, verse o mencionarse.
+\item Las herramientas obtienen canciones por letra y audio, y películas por sinopsis o escenas disponibles.
+\item El juez musical puede comprobar una referencia en la letra; el parecido acústico queda señalado como tal si no hay validación independiente.
+\item El juez de películas puede comprobar una escena lluviosa solo si dispone de evidencia de escena. Una sinopsis vaga deja la condición incierta.
+\item Se muestran resultados de ambos medios con explicación de lo observado. Sus puntuaciones no se mezclan como si midieran lo mismo.
+\end{enumerate}
+
+\section{Fallos, límites y revisión}
+Si falla un proveedor, falta evidencia o se agota el presupuesto, el flujo termina con un estado claro. Puede mostrar candidatos, pero sin presentarlos como comprobados. La traza registra petición original, plan, herramientas usadas, candidatos, evidencias, veredictos, refinamientos y motivo final. Evitaría guardar secretos o contenido completo de obras cuando un fragmento baste.
+
+Antes de sustituir un agente, compararía ambas versiones con las mismas consultas y obras. Mediría relevancia, respeto de restricciones, respaldo de afirmaciones, abstenciones correctas, tiempo y coste. Harían falta ejemplos revisados por personas; una puntuación generada por otro LLM no basta.
+
+\section{Orden de implementación propuesto}
+\begin{enumerate}
+\item Definir consultas de prueba reales para música, películas, videojuegos y pinturas; incluir ambigüedades y negaciones.
+\item Definir contratos de plan, obra, herramienta, evidencia y veredicto. Revisar si representan todos los medios sin campos obligatorios absurdos.
+\item Encapsular SPELLFIND musical como primer módulo mediante un adaptador. Comparar resultados y advertencias con la versión actual.
+\item Mejorar planificador y juez con veredictos por condición y pruebas citadas. Mantener reglas y límites fuera del LLM.
+\item Añadir películas con sinopsis, subtítulos y metadatos disponibles; después videojuegos y pinturas.
+\item Agregar análisis de escenas, imagen y sonido solo donde la evaluación demuestre utilidad superior a su coste.
+\item Considerar descubrimiento e ingesta externa cuando se hayan definido fuentes, permisos, límites y experiencia de espera.
+\end{enumerate}
+
+\section{Preguntas que conviene resolver juntos}
+\begin{enumerate}
+\item ¿Queremos priorizar recomendaciones de obras completas o encontrar momentos concretos, como una escena o fragmento?
+\item Cuando el medio no esté indicado, ¿preferimos preguntar o presentar resultados agrupados por medio?
+\item ¿Qué datos y fuentes podemos usar para los primeros catálogos de películas, juegos y pinturas?
+\item ¿Qué condiciones deben ser obligatorias para aceptar un resultado y cuáles pueden quedar como preferencias?
+\end{enumerate}
+
+\end{document}

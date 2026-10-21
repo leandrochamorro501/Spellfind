@@ -1,0 +1,6 @@
+{
+  "schema_version": 1,
+  "status": "pending_human_annotation",
+  "description": "Human grades 0-3 and negative_violations per song. Empty judgments are unknown, not irrelevant.",
+  "judgments": {}
+}

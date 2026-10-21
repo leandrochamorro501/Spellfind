@@ -1,0 +1,2 @@
+# Full inference runtime, Windows x64 / Python 3.12.
+-r requirements/models.lock

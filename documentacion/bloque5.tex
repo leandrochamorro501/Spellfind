@@ -1,0 +1,111 @@
+\section{Bloque V: catálogo actualizable y operación integrada}
+\label{sec:bloque5}
+\textbf{Fecha: 18 de octubre de 2026.} Implementación local de P17--P20.
+La evidencia se conserva en \code{validation/block5/}. Las pruebas con adaptadores
+de control verifican contratos y fallos, no relevancia musical ni descargas reales.
+
+\subsection{P17: generaciones coherentes del catálogo}
+Antes se conservaban caches independientes del CSV, mapa e índices. Reemplazar
+archivos mientras una búsqueda estaba en curso podía combinar generaciones.
+Ahora \code{catalog.py} publica los cuatro artefactos en un directorio inmutable,
+valida dimensiones, alineación, normalización y hashes SHA-256 y cambia el puntero
+actual mediante una transacción SQLite. El historial publicado distingue las
+generaciones válidas de los directorios huérfanos de una publicación fallida.
+El primer arranque copia los archivos heredados de \code{output/}, sin modificarlos.
+
+Cada solicitud web o búsqueda CLI fija un snapshot durante todo su recorrido.
+Una consulta iniciada antes de una actualización termina con su generación; la
+siguiente adopta la nueva. Los modelos se reutilizan, pero los recursos de búsqueda
+se superponen desde el contexto de la solicitud. No se agregan caches globales de
+resultados. Los helpers heredados sin contexto conservan su comportamiento estático.
+Las vistas de metadatos son copias y los índices expuestos no permiten agregar ni
+borrar vectores. Ante un nuevo puntero inválido, un servidor que ya posee un snapshot
+continúa con él e informa una advertencia; un arranque sin catálogo válido falla.
+
+Los publicadores se serializan: agregar canciones recarga la última generación
+dentro de la transacción. Reconstruir todo exige que la versión inicial no haya
+cambiado; así una ingesta concurrente no desaparece silenciosamente. Los enlaces
+de reproducción incluyen versión e ID, evitando que un ID reutilizado reproduzca
+otra canción. Se comprueba que la versión pertenezca al historial publicado.
+El coste es copiar índices y catálogo en cada publicación: es apropiado para el
+catálogo pequeño actual, pero debe medirse antes de escalar. No se garantiza
+durabilidad frente a pérdida de energía ni se implementa todavía rollback operativo.
+
+\subsection{P18: decisión sobre persistencia y progreso}
+No se recuperan checkpoints del grafo de búsqueda: sus juicios y recursos podrían
+pertenecer a otra generación, y no existe evidencia de que el ahorro compense esa
+complejidad. La búsqueda sigue siendo independiente por solicitud. Para ingesta,
+sí se persisten trabajos en SQLite: estado, etapa, progreso, metadatos, propietario,
+lease, resultado y error. La interfaz consulta el estado cada 1,5 segundos y conserva
+el último ID en almacenamiento local. Recargar consulta ese ID; no vuelve a enviar
+la canción ni reanuda automáticamente la búsqueda.
+
+Un trabajo pendiente puede ser reclamado una sola vez entre procesos. Un trabajo
+en ejecución pierde su propiedad al vencer el lease de 60 segundos y queda
+interrumpido. Un trabajador vencido no puede renovar ni publicar. El usuario puede
+enviar de nuevo el enlace; la publicación es idempotente por trabajo y URL. Si hubo
+una caída tras publicar y antes de registrar el resultado, el nuevo envío detecta
+la canción existente. La cola admite hasta 32 trabajos activos y deduplica enlaces.
+Se eligió polling por sencillez y recuperación por ID; SSE queda diferido hasta
+demostrar una necesidad de menor latencia o menor tráfico.
+
+\subsection{P19: ingesta opcional sin bloquear la búsqueda}
+La función permanece desactivada por defecto mediante
+\code{SPELLFIND_INGEST_ENABLED=false}. El adaptador nativo usa yt-dlp para MP3 con
+FFmpeg, prioriza subtítulos oficiales y utiliza Whisper CPU como alternativa.
+Un fallo al descargar subtítulos no descarta el audio ya descargado. Se aceptan
+enlaces HTTPS de vídeos individuales de YouTube, con duración conocida de hasta
+15 minutos, límites de tamaño y tiempos de espera. Se rechazan directos y enlaces
+arbitrarios. Estos límites no equivalen a cuotas globales de almacenamiento.
+
+Las letras se codifican con prefijo \code{search_document:}, fragmentos de 2000
+caracteres y media normalizada de vectores de dimensión 256. CLAP procesa ventanas
+de 10 segundos al inicio, centro y final a 48 kHz y produce una media normalizada
+de dimensión 512. La cobertura es parcial y se registra. La receta del catálogo
+importado no demuestra igualdad de revisiones ni de agregación con los vectores
+nuevos; esa compatibilidad debe evaluarse antes de afirmar calidad equivalente.
+
+Sólo se publica después de completar metadatos y ambos vectores. No se inventan
+letras vacías ni se usa la fecha de subida como año de lanzamiento. Artista, género
+y año pueden ser aportados explícitamente; la procedencia queda registrada. Una
+canción sin transcripción utilizable falla, incluso si es instrumental: el esquema
+alineado actual requiere ambas modalidades. Esto es una limitación pendiente,
+no una mejora sobre recuperación por audio de instrumentales.
+
+La API añade \code{GET /ingest/status}, \code{POST /ingest} y
+\code{GET /ingest/jobs/<id>}. Responde 202 al encolar, 400 ante datos inválidos,
+403 ante origen cruzado, 429 ante saturación y 503 si la capacidad está desactivada
+o incompleta. La interfaz muestra etapas, errores y reproducción versionada.
+El servicio está concebido para uso local; la comprobación de origen no sustituye
+autenticación para exposición pública. La extensión
+\code{requirements/ingestion.in} es experimental y no tiene un lock verificado.
+En este entorno faltan yt-dlp, FFmpeg y Whisper: no se realizó una ingesta real.
+Referencias técnicas: \url{https://github.com/yt-dlp/yt-dlp},
+\url{https://github.com/openai/whisper} y \url{https://github.com/LAION-AI/CLAP}.
+
+\subsection{P20: comprobaciones y límites del cierre}
+Las regresiones ejercitan publicación fallida, hashes corruptos, snapshots
+inmutables, dos publicadores, comparación de versión, búsqueda en curso durante
+actualización, propiedad y vencimiento de trabajos, errores del adaptador,
+subtítulos y fallback, contratos HTTP, audio con rangos y consistencia web/CLI.
+Las evaluaciones fijan un snapshot para toda la serie y registran su manifest;
+la comparación rechaza catálogos diferentes. Los resultados ejecutados y sus
+comandos quedan en los informes del bloque. No se confunden adaptadores de
+control con ejecución de proveedores ni una comprobación estática con compilación PDF.
+
+\subsection{Pendientes adicionales y prioridad}
+\begin{description}
+\item[E17, P17/P20: retención y recuperación.] Definir cuotas, limpieza segura de
+medios, trabajos y generaciones huérfanas, backups y restauración. Actualmente se
+retienen para no eliminar recursos de consultas o enlaces todavía activos.
+\item[E18, P01/P19/P20: entorno e integración reales.] Fijar dependencias opcionales
+en entorno separado; verificar FFmpeg, subtítulos, Whisper, revisiones de Nomic/CLAP
+y compatibilidad con vectores históricos. Después medir relevancia humana,
+latencia y memoria reales. Mantener pendientes P04, P10, P12 y P16 donde corresponda.
+\item[E19, P06/P19: modalidades opcionales.] Diseñar disponibilidad por canción e
+índices con mapas independientes para admitir instrumentales sin letras ficticias.
+Revisar normalización y explicación de pesos antes de implementarlo.
+\end{description}
+Primero se valida E18 en un entorno reproducible; E17 precede al uso sostenido y
+E19 a anunciar ingesta general de instrumentales. Ninguno se considera cerrado
+por haber añadido la infraestructura de este bloque.

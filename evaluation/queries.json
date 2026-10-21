@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "description": "Fixed diagnostic queries. No song relevance labels have been invented.",
+  "queries": [
+    {"id":"lyric_grief","category":"lyrics","query":"Una canción sobre vivir con la ausencia de alguien que murió","lyric_positive":["I live with the absence of someone who died"],"lyric_negative":[],"clap_positive":[],"clap_negative":[]},
+    {"id":"lyric_home","category":"lyrics","query":"Extrañar mi ciudad natal y querer volver","lyric_positive":["I miss my hometown and want to return home"],"lyric_negative":[],"clap_positive":[],"clap_negative":[]},
+    {"id":"audio_piano","category":"audio","query":"Piano lento y suave","lyric_positive":[],"lyric_negative":[],"clap_positive":["slow soft piano music"],"clap_negative":[]},
+    {"id":"audio_drums","category":"audio","query":"Música rápida con batería fuerte","lyric_positive":[],"lyric_negative":[],"clap_positive":["fast energetic music with loud drums"],"clap_negative":[]},
+    {"id":"mixed_sad_piano","category":"mixed","query":"Una canción triste con piano sobre perder a un amigo","lyric_positive":["I am sad because I lost a friend"],"lyric_negative":[],"clap_positive":["sad quiet piano and voice"],"clap_negative":[]},
+    {"id":"mixed_rebellion","category":"mixed","query":"Rock enérgico cuya letra trata de luchar contra el sistema","lyric_positive":["I rebel against the system and fight injustice"],"lyric_negative":[],"clap_positive":["energetic rock music"],"clap_negative":[]},
+    {"id":"literal_brain","category":"literal","query":"Una letra que diga que mi pequeño cerebro me está dejando atrás","lyric_positive":["my little brain is leaving me behind"],"lyric_negative":[],"clap_positive":[],"clap_negative":[]},
+    {"id":"literal_rain","category":"literal","query":"Una letra que mencione esperar bajo la lluvia en una estación","lyric_positive":["I wait in the rain at a station"],"lyric_negative":[],"clap_positive":[],"clap_negative":[]},
+    {"id":"negative_romance","category":"negative","query":"Tristeza y soledad, pero sin amor romántico","lyric_positive":["I feel sad and lonely"],"lyric_negative":["romantic love and heartbreak"],"clap_positive":[],"clap_negative":[]},
+    {"id":"negative_synth","category":"negative","query":"Música tranquila con guitarra, sin sintetizadores","lyric_positive":[],"lyric_negative":[],"clap_positive":["quiet guitar music"],"clap_negative":["synthesizers and electronic sounds"]},
+    {"id":"instrumental_study","category":"instrumental","query":"Instrumental relajante para estudiar, sin voces","lyric_positive":[],"lyric_negative":[],"clap_positive":["relaxing instrumental music for studying"],"clap_negative":["singing and spoken voices"]},
+    {"id":"instrumental_guitar","category":"instrumental","query":"Guitarra acústica instrumental sin canto","lyric_positive":[],"lyric_negative":[],"clap_positive":["instrumental acoustic guitar"],"clap_negative":["singing vocals"]}
+  ]
+}

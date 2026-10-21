@@ -1,0 +1,498 @@
+\section{Registro crítico de cambios realizados}
+\label{sec:evolucion}
+Este registro documenta la sustitución del estado inicial A/B/C por el flujo
+actual. Los ocho números corresponden a los dos bloques de implementación
+acordados. Los puntos E01--E12 conservan el diagnóstico adicional. Su ejecución y la de
+los antiguos puntos 9--14 se organiza ahora mediante P01--P20 en la
+sección~\ref{sec:plan}; no son tres listas de trabajo independientes.
+
+\subsection{Cómo se juzga una mejora}
+Se distinguen cuatro tipos de conclusión:
+\begin{description}
+\item[Corrección comprobada:] una prueba reproduce una conducta incorrecta y
+comprueba la propiedad esperada en el código actual.
+\item[Optimización comprobada por conteo:] se comprueba que se realizan menos
+cargas o llamadas equivalentes. Esto no acredita un porcentaje de reducción de
+latencia, memoria total o coste real.
+\item[Capacidad añadida:] existe una ruta de ejecución antes ausente. Su utilidad
+para el usuario necesita evaluación funcional y de relevancia.
+\item[Decisión con contrapartidas:] mejora una propiedad y puede empeorar otra.
+Debe registrarse la alternativa y su condición de aceptación.
+\end{description}
+La evidencia disponible comprende 32 pruebas aprobadas al finalizar el bloque 8,
+con LangGraph real y proveedores/modelos simulados, y análisis sintáctico de 17
+archivos activos y de pruebas. Se probaron concurrencia del juez e inicialización
+de recursos; no se hizo una prueba de carga HTTP con modelos reales.
+
+\subsection{Cambio previo: nombre e identidad del proyecto}
+Se sustituyeron las referencias textuales a la marca anterior por SPELLFIND en
+12 archivos, incluidos interfaz, prompts, documentación y notebook; también se
+renombró el archivo del grafo a \code{grafo_SPELLFIND.png}. Se conservaron los
+identificadores de datasets externos y los títulos bibliográficos históricos.
+
+La ventaja es la consistencia de nombres y referencias locales. No cambia el
+algoritmo ni demuestra mayor calidad de recuperación. El renombrado del PNG no
+implica que se haya redibujado o actualizado el contenido de la imagen.
+
+\subsection{Punto 1: exclusiones persistentes}
+\label{cambio:1}
+\textbf{Antes.} A repetía la búsqueda final con un conjunto vacío de exclusiones,
+de modo que una canción rechazada podía reaparecer. C añadía también las canciones
+aprobadas a sus exclusiones.
+
+\textbf{Ahora.} El grafo conserva un pool por solicitud y filtra el ranking al
+seleccionar candidatos y al generar la respuesta. Solo los rechazos se agregan
+al pool; el candidato aprobado queda primero. Si faltan candidatos, no se
+reincorporan rechazados para completar cinco resultados. Se conserva el motivo
+de cada exclusión. \code{ExclusionPool.exclude} evita duplicar su registro cuando
+el juez y el orquestador registran el mismo rechazo.
+
+\textbf{Archivos.} \code{judge.py}, \code{workflow.py} y \code{app.py}.
+\textbf{Evidencia.} Las pruebas de rechazos integrados y de agotamiento verifican
+que los IDs excluidos no vuelven, incluso después de refinar consultas.
+
+\textbf{Balance.} Corrección de coherencia comprobada. La política conserva
+también rechazos posiblemente equivocados del LLM; aumentar su precisión es
+distinto de hacer cumplir sus decisiones. Un candidato rechazado bajo una
+consulta anterior no se reconsidera después de refinar. E01 y E06 revisan esa
+política y la calidad de la evidencia.
+
+\subsection{Punto 2: veredictos explícitos y errores visibles}
+\label{cambio:2}
+\textbf{Antes.} A calculaba una variable de aprobación, pero devolvía verdadero
+ante cualquier respuesta sin herramientas. Los errores del proveedor también
+se convertían en aprobación.
+
+\textbf{Ahora.} El juez devuelve \code{approved}, \code{rejected} o \code{error}.
+Solo acepta aprobación textual explícita. Un rechazo textual reconocido o una
+llamada válida a \code{exclude_song} rechaza al candidato. Respuestas vacías,
+ambiguas, argumentos inválidos y fallos del proveedor producen error sin alterar
+el pool. Todas las llamadas de herramienta se validan antes de excluir, incluido
+que el ID coincida con el candidato actual.
+
+Se eliminó la segunda llamada al LLM que solo confirmaba el rechazo: la exclusión
+se resuelve después de validar la primera respuesta. La interfaz muestra una
+advertencia cuando no se completa la validación. La API conserva el booleano
+\code{approved} por compatibilidad y añade estado explícito y estado por resultado.
+
+\textbf{Archivos.} \code{judge.py}, \code{app.py} y \code{templates/index.html}.
+\textbf{Evidencia.} Pruebas de texto ambiguo, rechazo textual, herramientas
+malformadas, ID ajeno y fallos de inicialización/proveedor.
+
+\textbf{Balance.} Se corrigen falsas aprobaciones por errores de control. Esto no
+demuestra que el LLM juzgue mejor una letra. El parseo estricto puede convertir
+una respuesta semánticamente válida pero distinta del formato en error; no hay
+reintento limitado ni validación humana del juez. Pendiente E06.
+
+\subsection{Punto 3: contrato único de planes y fallback}
+\label{cambio:3}
+\textbf{Antes.} El prompt pedía listas, mientras que el fallback devolvía un
+diccionario lírico incompatible con el worker.
+
+\textbf{Ahora.} \code{search_contract.py} valida las cuatro listas. Adapta cadenas
+individuales y el formato lírico antiguo con \code{text} y \code{weight}, elimina
+espacios, textos vacíos y duplicados exactos, y rechaza elementos no textuales,
+campos ausentes o planes sin consultas positivas. Los nulos se convierten en
+listas vacías. El peso antiguo se valida pero no determina la fusión: los pesos
+se siguen infiriendo en la aplicación. Router, fallback y refinador comparten
+este contrato. El grafo puede usarlo incluso si falla la importación del router.
+
+\textbf{Archivos.} \code{search_contract.py}, \code{router.py},
+\code{workflow.py} y \code{refiner.py}.
+\textbf{Evidencia.} Pruebas de esquemas antiguos, nulos, listas mixtas, duplicados,
+falta de positivas y llegada del fallback a los workers y al juez.
+
+\textbf{Balance.} Se comprueba compatibilidad de tipos, no calidad semántica.
+El fallback copia la consulta original en ambas modalidades, sin traducir al
+inglés ni preservar negativos detectados por un plan fallido. Puede empeorar
+la recuperación y activar una modalidad innecesaria. Pendiente E02.
+
+\subsection{Punto 4: aislamiento por solicitud}
+\label{cambio:4}
+\textbf{Antes.} A guardaba el pool activo en \code{_active_pool}; dos solicitudes
+intercaladas podían modificar el pool de la otra.
+
+\textbf{Ahora.} Se elimina esa variable. El pool se pasa explícitamente al juez;
+la herramienta describe el rechazo y la aplicación lo aplica al contexto local
+tras validarlo. Cada búsqueda tiene \code{request_id}, logs y copias al consultar
+el conjunto de exclusiones. Una búsqueda nueva inicia sin rechazos previos.
+
+\textbf{Archivos.} \code{judge.py}, \code{workflow.py} y \code{app.py}.
+\textbf{Evidencia.} Una prueba con barrera intercala dos evaluaciones y verifica
+que cada pool contiene solo su propio ID; otra ejecuta búsquedas sucesivas.
+
+\textbf{Balance.} Elimina el cruce de exclusiones reproducido. No certifica que
+todos los clientes externos o modelos soporten cualquier nivel de concurrencia.
+Además, el pool se muta desde el juez y desde el grafo; la idempotencia evita
+duplicados, pero conviene asignar un único propietario del estado. Pendiente E08.
+
+\subsection{Punto 5: consolidación en un único grafo}
+\label{cambio:5}
+\textbf{Antes.} La web híbrida y el grafo semántico tenían reglas diferentes.
+B era un borrador con incompatibilidades y C no recuperaba audio.
+
+\textbf{Ahora.} \code{workflow.py} contiene el flujo común con estado tipado y
+dependencias inyectadas: planificar, recuperar, evaluar y refinar. Web y consola
+lo invocan. \code{cli.py} acepta una consulta por argumento. Los nombres antiguos
+\code{tarea_3.py} y \code{tarea_3_correcion.py} redirigen a esa CLI y requieren
+también un argumento; ya no ejecutan las consultas de ejemplo embebidas.
+Los originales se conservaron en \code{experiments/}, marcados como históricos.
+
+\textbf{Ventaja.} Hay una sola definición de exclusión, límite, refinamiento y
+error para las entradas soportadas. La inyección permite ejecutar el grafo real
+con modelos simulados en pruebas. Se verifican por inspección las entradas
+compartidas; no se ejecutó una sesión CLI completa con modelos reales.
+
+\textbf{Contrapartida.} LangGraph pasa a ser dependencia del flujo web; el grafo
+se compila de nuevo por solicitud. Frente a C, el flujo nuevo no conserva
+\code{MemorySaver}, streaming de actualizaciones por CLI ni recuperación de un
+checkpoint tras una excepción. Por ello es una consolidación de lógica, no un
+superconjunto de todas las capacidades previas. Pendiente E04.
+
+\subsection{Punto 6: refinamiento selectivo por modalidad}
+\label{cambio:6}
+\textbf{Antes.} A descartaba candidatos con consultas fijas. C reescribía solo
+letras y acumulaba vectores, con riesgo de repetir o arrastrar consultas fallidas.
+
+\textbf{Ahora.} Después de un rechazo, \code{refiner.py} recibe consulta original,
+plan, candidato y motivo del juez. Propone un plan nuevo y las modalidades que
+necesitan cambiar. La validación impide cambiar las otras listas, eliminar
+negativos existentes, vaciar una modalidad activa o activar una inicialmente
+ausente. La normalización elimina duplicados exactos. Se admiten cambios
+líricos, acústicos o de ambos; un plan sin cambios también es válido.
+
+El prompt pide conservar imágenes literales, reemplazar positivos en vez de
+acumularlos e impedir restricciones inventadas. Estas son instrucciones al
+modelo: el validador no puede certificar por sí solo que una frase nueva conserve
+la intención. El plan inicial, el final y cada refinamiento quedan registrados.
+
+\textbf{Archivos.} \code{refiner.py}, \code{workflow.py} y \code{app.py}.
+\textbf{Evidencia.} Pruebas de cambios por modalidad, planes sin cambios,
+conservación de negativas, cambios indebidos y fallo del refinador.
+
+\textbf{Balance.} Capacidad añadida, con mejora de relevancia aún no demostrada.
+Un rechazo lírico no demuestra un fallo acústico: el refinador declara que no
+hay evidencia de audio. Puede reescribir descriptores a partir de la petición,
+pero no juzgar cómo suena el candidato. También añade una llamada LLM después
+de cada rechazo refinable, hasta dos con tres intentos. Si falla, hoy se detiene
+la búsqueda aunque queden candidatos del plan anterior. Pendientes E01, E03,
+E05 y E07.
+
+\subsection{Punto 7: terminación con significado explícito}
+\label{cambio:7}
+\textbf{Antes.} C enviaba a la ruta denominada aceptación al alcanzar tres
+veredictos incluso si todos eran insuficientes. A podía devolver resultados
+sin una aprobación clara al terminar el ciclo.
+
+\textbf{Ahora.} \code{approved} requiere un veredicto explícito;
+\code{limit_reached} significa presupuesto agotado con candidatos restantes;
+\code{no_candidates} significa que no quedan candidatos recuperados sin excluir;
+\code{error} distingue fallos y añade la etapa. No se refina después del último
+intento ni se excluye una canción aprobada. Si el ranking queda vacío, el juez
+no se invoca. Una canción sin letra consume un intento y se excluye sin LLM.
+
+\textbf{Archivos.} \code{workflow.py}, \code{app.py}, interfaz y CLI.
+\textbf{Evidencia.} Pruebas de límite, agotamiento, errores y ausencia de letras.
+
+\textbf{Balance.} Corrección de control comprobada. El presupuesto cuenta
+selecciones de candidato, no solo llamadas al juez. La ausencia de letra no
+debería equivaler siempre a fallo de una consulta acústica o instrumental.
+\code{no_candidates} describe el ranking explorado, no demuestra que todo el
+catálogo carezca de canciones válidas. Pendientes E01 y E10.
+
+\subsection{Punto 8: reutilización de rankings, embeddings y recursos}
+\label{cambio:8}
+\textbf{Antes.} A repetía ambas búsquedas hasta tres rondas y una búsqueda final,
+aunque las consultas fueran iguales. Servidor y workers cargaban copias de
+índices, mapa y CSV; los negativos se recodificaban para cada positiva.
+
+\textbf{Ahora.} Cada solicitud cachea resultados por modalidad, positivas,
+negativas y top-K. Las exclusiones se aplican después, por lo que no invalidan
+esa caché. Cambiar solo letras reutiliza audio y viceversa. El resultado final
+usa el último ranking disponible sin otra recuperación.
+
+\code{resources.py} comparte catálogo, mapa e índices por proceso, con
+inicialización protegida. El lookup usa un diccionario por ID y devuelve una
+copia de los metadatos. El catálogo valida IDs duplicados y normaliza valores
+ausentes. Los workers conservan sus modelos bajo bloqueo y no leen el CSV.
+Cada uno tiene una LRU de 512 embeddings, devuelve copias y protege la
+codificación para impedir mutaciones compartidas y cargas concurrentes dobles.
+
+\textbf{Evidencia.} Con tres evaluaciones y consultas sin cambios, las pruebas
+comprueban una llamada a cada worker frente a las hasta cuatro de A. Con un
+cambio de una modalidad, comprueban dos llamadas a esa rama y una a la otra.
+Otras pruebas verifican carga única de recursos/modelo bajo concurrencia y
+copias independientes de embeddings.
+
+\textbf{Balance.} Menos trabajo redundante demostrado por conteo; no existe aún
+un benchmark con modelos reales. Las caches consumen memoria y no sobreviven
+al proceso. Se comparte por proceso, no entre procesos de servidor. Se mantienen
+tanto DataFrame como diccionario de metadatos, por lo que no se ha eliminado
+toda duplicación de representación. Los bloqueos serializan codificaciones
+por modalidad y el catálogo no se actualiza en caliente. Pendientes E07 y E09.
+
+\subsection{Cambios auxiliares y compatibilidad}
+\begin{itemize}
+\item La API añade \code{termination_reason}, \code{error_stage},
+\code{initial_plan}, \code{refinement_log}, \code{workflow_trace} y
+\code{validation_scope: lyrics}. Se mantienen los campos de resultados previos.
+\item Se devuelven \code{n_lyrics} y \code{n_audio}, que la interfaz ya intentaba
+mostrar. Son cantidades del último ranking por rama, no contadores acumulados
+de operaciones o canciones únicas de todo el proceso.
+\item El servicio valida consulta no vacía y k positivo. El endpoint aún llama
+a métodos del cuerpo antes de validarlo completamente: no está resuelto el
+manejo HTTP de cualquier tipo de JSON. Pendiente E11.
+\item Las rutas de lectura de catálogo e índices se resuelven desde el módulo.
+El router y el indexador todavía mantienen rutas relativas al directorio de
+trabajo; no se declara independencia completa de ese directorio.
+\item Los workers ahora aceptan conceptos de cinco caracteres o menos y filtran
+solo vacíos. Evita perder términos como piano, pero su impacto en relevancia no
+ha sido medido.
+\item El flujo actual propaga fallos de recuperación y descarta un ranking
+antiguo si falla una búsqueda tras refinar. Evita mostrar scores asociados al
+plan incorrecto. Frente a A se pierde la devolución parcial si una sola rama
+falla; esa política debe revisarse, pendiente E05.
+\item Se añadieron README, documentación, pruebas y exclusión de temporales en
+Git. No se reescribieron los datos del catálogo ni se midió una fórmula nueva
+de fusión: el score porcentual sigue pendiente de corrección.
+\end{itemize}
+
+\section{Puntos extra por realizar o corregir}
+\label{sec:extras}
+Esta lista conserva el diagnóstico previo al bloque I. E10 tiene cubierta su validación numérica por P03 y mantiene presupuestos pendientes en P11; E11 tiene entorno y HTTP verificados en P01--P02, con validación integral pendiente en P20; E07 tiene protocolo y simulación en P04, con calidad real pendiente. Los demás puntos continúan pendientes. El orden de esta lista
+es histórico; la prioridad de ejecución vigente es la del plan P01--P20.
+Se registran alternativas
+con una condición verificable, no como mejoras ya implementadas. Prioridad alta
+significa riesgo de respuesta incorrecta o pérdida de disponibilidad; media
+indica decisiones de rendimiento, operación o mantenibilidad por medir.
+
+\subsection{E01. Separar validación lírica, acústica y de consultas instrumentales}
+\textbf{Prioridad alta.} El juez sigue leyendo letras y el grafo excluye canciones
+sin letra. Una consulta solo acústica puede necesitar un resultado instrumental
+que hoy se descartaría; una aprobación no valida audio. Además, un rechazo
+lírico no justifica por sí solo refinar CLAP.
+
+\textbf{Acción.} Definir requisitos y evidencia por modalidad; emitir
+\code{not_evaluated} cuando falte evidencia acústica, permitir rutas solo audio,
+y seleccionar refinamientos a partir de feedback fundamentado. Evaluar la
+reconsideración de rechazos dependientes de una consulta refinada manteniendo
+fijas las restricciones explícitas del usuario.
+\textbf{Aceptación.} Consultas instrumentales no se rechazan por ausencia de
+letra y ninguna salida afirma validación acústica sin evidencia.
+
+\subsection{E02. Fallback fiel al idioma, modalidades y restricciones}
+\textbf{Prioridad alta.} El respaldo usa el texto original en ambas ramas; su
+formato es correcto, pero no garantiza traducción, separación modal ni negativos.
+\textbf{Acción.} Diseñar un fallback degradado que conserve el último plan válido
+o restricciones verificables e informe qué interpretación no pudo hacerse.
+No inventar una extracción fiable de negativos mediante reglas sin evaluarla.
+\textbf{Aceptación.} Consultas con negaciones e idiomas distintos del inglés no
+pierden silenciosamente sus restricciones cuando falla el router.
+
+\subsection{E03. Proveniencia de negativos y activación de modalidades}
+\textbf{Prioridad alta.} Conservar todos los negativos impide quitar uno
+inventado por el LLM. Impedir activar modalidades ausentes bloquea la reparación
+de un error inicial del router.
+\textbf{Acción.} Separar restricciones explícitas del usuario de hipótesis del
+modelo; bloquear las primeras y permitir revisar las segundas mediante evidencia.
+\textbf{Aceptación.} Se puede reparar una clasificación modal incorrecta sin
+eliminar restricciones explícitas ni añadir requisitos no pedidos.
+
+\subsection{E04. Coste del grafo y funciones perdidas frente a C}
+\textbf{Prioridad media.} El grafo se compila por solicitud y ya no hay checkpoints
+ni streaming equivalentes a C. LangGraph no hace que la recuperación sea mejor
+por sí mismo.
+\textbf{Acción.} Medir el coste de compilación y valorar un grafo compilado
+reutilizable con estado por solicitud. Si se necesita reanudar o transmitir
+progreso, recuperar esas capacidades con contratos serializables. Comparar con
+una máquina de estados simple si el grafo no aporta ventajas medibles.
+\textbf{Aceptación.} Igualdad funcional de entradas, aislamiento concurrente y
+medidas de coste; declarar explícitamente si se ofrece reanudación o streaming.
+
+\subsection{E05. Recuperación parcial y fallos del refinador}
+\textbf{Actualización: resuelto técnicamente por P09 en la
+sección~\ref{sec:bloque3}. El diagnóstico siguiente corresponde al estado previo.}
+\textbf{Prioridad alta.} Ahora un fallo de una rama detiene toda la recuperación;
+un fallo del refinador impide evaluar el siguiente candidato ya disponible.
+Son decisiones conservadoras, no una mejora automática de disponibilidad.
+\textbf{Acción.} Diseñar un estado degradado por modalidad y una salida que
+conserve evidencia del plan usado. Evaluar continuar con los rankings previos
+cuando falla el refinador y reajustar pesos solo con una política validada.
+\textbf{Aceptación.} Un fallo de CLAP no borra resultados líricos útiles sin
+explicación y un candidato no se marca aprobado por omitir la rama fallida.
+
+\subsection{E06. Calidad del juez, formato y extensión de la evidencia}
+\textbf{Actualización: P10 implementa formato, citas, cobertura y reintento;
+calibración humana pendiente. Véase~\ref{sec:bloque3} para el estado actual.}
+\textbf{Prioridad alta.} El formato estricto evita aprobaciones accidentales,
+pero no calibra el juicio. Solo se inspeccionan 3000 caracteres, se juzga el
+top-1 y no hay reintento de formato. Los demás resultados quedan sin evaluar.
+\textbf{Acción.} Comparar salida estructurada, reintento limitado y políticas
+de evidencia por fragmentos con referencia humana. Mantener fallos como errores
+y diferenciar abstención de rechazo. Evaluar rechazo persistente y revisión
+después de refinar sobre ejemplos etiquetados.
+\textbf{Aceptación.} Medir falsos rechazos y aprobaciones, cubrir pistas situadas
+al final de la letra y no presentar todo el top-K como validado por evaluar uno.
+
+\subsection{E07. Comprobar si refinar y cachear mejora el resultado global}
+\textbf{Actualización: P12 tiene comparación simulada y política experimental;
+la utilidad musical y las medidas reales siguen pendientes. Véase~\ref{sec:bloque3}.}
+\textbf{Prioridad alta para afirmar superioridad.} Las pruebas verifican ramas y
+conteos; no prueban más relevancia ni menor latencia de extremo a extremo.
+El refinador añade llamadas y puede desviar la intención original.
+\textbf{Acción.} Comparar el mismo baseline corregido con y sin refinamiento,
+y medir latencia fría/caliente, llamadas, coste, memoria, relevancia y negativos.
+Usar el mismo corpus, consultas y criterios; repetir y reportar dispersión.
+\textbf{Aceptación.} Publicar una comparación reproducible y habilitar el
+refinamiento solo donde su beneficio justifique coste y errores adicionales.
+
+\subsection{E08. Un único propietario de exclusiones y estado serializable}
+\textbf{Prioridad media.} Juez y grafo mutan el pool; la idempotencia evita
+duplicados, pero el estado contiene objetos y caches que no se han validado para
+checkpoints. \code{TypedDict} no impone validación en tiempo de ejecución.
+\textbf{Acción.} Hacer que el juez devuelva decisiones y el orquestador sea el
+único que aplique exclusiones. Separar estado serializable y recursos efímeros,
+con invariantes de aprobación, rechazo y versión del plan.
+\textbf{Aceptación.} Una exclusión tiene un solo punto de escritura; si se añade
+persistencia, guardar y restaurar conserva las decisiones sin compartir pools.
+
+\subsection{E09. Invalidación de caches, memoria y concurrencia real}
+\textbf{Actualización: P16 instrumenta contención y cachés y prueba concurrencia
+local con índices reales/modelos de control; invalidación y memoria real siguen
+pendientes de P16/P17. Véase~\ref{sec:bloque4}.}
+\textbf{Prioridad media.} Reiniciar es hoy la política de actualización. Índices,
+modelos, DataFrame y diccionario consumen memoria por proceso; devolver un
+DataFrame o mapa compartido permite que otro consumidor lo modifique.
+\textbf{Acción.} Medir RSS, GPU y contención; valorar snapshots versionados,
+lecturas inmutables, publicación atómica del catálogo, límites de caché medidos
+y batch de embeddings. No eliminar bloqueos sin comprobar el modelo concreto.
+\textbf{Aceptación.} Resultados coherentes con una versión del índice, consumo
+acotado y carga concurrente representativa; nunca mezclar mapa e índice viejos
+y nuevos.
+
+\subsection{E10. Presupuesto de candidatos y validación numérica}
+\textbf{Actualización: validación numérica cubierta por P03 y presupuestos
+separados por P11; véanse~\ref{sec:bloque1} y~\ref{sec:bloque3}.}
+\textbf{Prioridad alta.} El límite cuenta también candidatos sin letra y solo
+se exploran rankings de tamaño fijo. Faltan controles numéricos completos de
+normas, valores finitos y compatibilidad índice--embedding. La resta negativa
+puede producir una dirección nula o poco informativa.
+\textbf{Acción.} Separar intentos de evaluación, descartes de metadatos y
+ampliación de recuperación; validar vectores y catálogo al cargar.
+\textbf{Aceptación.} Un fallo de datos no consume todo el presupuesto útil;
+una consulta degenerada no entra a FAISS como una búsqueda aparentemente válida.
+
+\subsection{E11. Entorno reproducible y contrato HTTP completo}
+\textbf{Prioridad alta.} No se ha comprobado una instalación limpia de todas las
+dependencias fijadas. El entorno temporal de pruebas recibió instalaciones
+superpuestas; la última salida de metadatos informó LangGraph 1.2.16 y
+LangChain Core 1.4.3 aunque también se intentó instalar LangGraph 1.2.4. Esa
+salida no certifica un lock limpio ni la matriz completa de compatibilidad.
+\textbf{Acción.} Crear un entorno aislado reproducible y separar dependencias
+directas y de desarrollo. Verificar imports reales, versiones y resolución;
+probar HTTP con Flask real, JSON inválido, estados 400/500/503 e inicialización
+WSGI. Completar rutas, configuración, guía de instalación y modo de despliegue.
+\textbf{Aceptación.} Instalar y ejecutar desde cero con versiones inequívocas,
+sin depender de la carpeta temporal de esta sesión.
+
+\subsection{E12. Completar los puntos originales 9--14}
+\textbf{Actualización: P13--P15 cubren puntuación, pesos, filtros y evidencia
+visible, con límites de calidad explícitos. P16 registra un perfil local; carga
+real e ingesta P19 siguen pendientes. Véase~\ref{sec:bloque4}.}
+\textbf{Prioridad según alcance.} Siguen pendientes puntuación interpretable y
+pesos ajustables, filtros exactos, evidencia por resultado, operación completa,
+evaluación reproducible e ingesta desde YouTube. El grafo unificado no los da
+por implementados. E06, E07 y E11 detallan trabajos relacionados, sin duplicar
+la numeración acordada.
+\textbf{Aceptación.} Cada bloque futuro identifica los puntos cubiertos y sus
+pruebas, y actualiza este registro sin atribuir mejoras todavía no medidas.
+
+\subsection{E13. Fidelidad semántica de citas y cobertura del respaldo}
+\textbf{Prioridad alta. Estado pendiente tras el bloque II.} La procedencia
+verifica una cita literal y su negación, pero no demuestra que el texto inglés
+propuesto por un modelo tenga exactamente el mismo significado. Los controles
+léxicos tampoco cubren todas las lenguas, negaciones o contrastes. Una hipótesis
+mal traducida podría quedar inmovilizada si se etiqueta como explícita.
+\textbf{Acción.} Evaluar equivalencia de restricciones con ejemplos anotados,
+separar evidencia textual de confirmación semántica y medir cobertura y coste
+de reformulación. Considerar entrada estructurada de restricciones cuando aporte
+una decisión útil al usuario, sin certificar una traducción solo por citarla.
+\textbf{Aceptación.} Medir pérdidas/adiciones de intención y tasa de abstención;
+ampliar reglas o modelos solo con evidencia. Se integra en P10/P12, y en P15
+si se decide exponer corrección de restricciones al usuario.
+
+\subsection{E14. Versionado por cambios de orden sin cambio de intención}
+\textbf{Prioridad alta. Diagnóstico histórico; corregido el 18 de octubre de 2026.}
+La huella del plan depende del orden de sus listas. Un refinador que solo
+invierte dos consultas crea nuevas versiones y libera exclusiones previas.
+Con dos candidatos y rechazo constante se evaluó al primero tres veces:
+IDs $[1,1,1]$, versión final 3 y límite agotado, sin evaluar el segundo.
+\textbf{Acción previa al bloque III.} Canonizar la identidad de consultas y
+restricciones equivalentes, separando cambios de presentación de cambios
+efectivos. Conservar evidencia y restricciones explícitas.
+\textbf{Aceptación.} Permutar elementos equivalentes no libera rechazos;
+cambios efectivos justificados sí permiten reconsiderar candidatos.
+Asignado al bloque II/P07, con regresiones en P11/P12. La corrección y prueba
+de no repetición constan en la sección~\ref{sec:bloque3}.
+
+\subsection{E15. Serialización sin validar en la ruta de aclaración}
+\textbf{Prioridad media. Diagnóstico histórico; corregido el 18 de octubre de 2026.}
+El retorno temprano de planificación que solicita aclaración conserva metadatos
+sin comprobar su serialización finita. Una entrada controlada con un campo
+numérico NaN alcanzó el estado final de aclaración; JSON estricto lo rechaza.
+Esto contradice la garantía general de estado JSON de P05. No se observó una
+respuesta real del proveedor con ese dato.
+\textbf{Acción previa al bloque III.} Aplicar el mismo contrato a todas las
+salidas o definir un esquema explícito de metadatos permitidos.
+\textbf{Aceptación.} Probar planes listos y aclaraciones con números no finitos
+y objetos no serializables; todos los estados aceptados admiten JSON estricto.
+La evidencia de E14/E15 y hashes de fuentes están en
+\texttt{validation/revision\_block2/report.json}; son controles locales con
+LangGraph real y colaboradores simulados, sin medir relevancia musical.
+Asignado al bloque II/P05/P08; ambas rutas ahora validan metadatos JSON finitos.
+Las pruebas actuales constan en la sección~\ref{sec:bloque3}.
+
+\subsection{E16. Registro de consola incompatible con CP1252}
+\textbf{Prioridad media. Diagnóstico histórico; corregido el 18 de octubre de 2026.}
+En esta consola Windows, la suite de 72 pruebas terminó con dos errores
+\texttt{UnicodeEncodeError} al imprimir símbolos Unicode desde el router y
+el worker lírico durante su inicialización. Ejecutar con
+\texttt{python -X utf8 -m unittest discover -s tests} dio 72 pruebas aprobadas.
+No se descargaron modelos: las inicializaciones empleaban colaboradores
+simulados. El worker CLAP contiene un mensaje similar, identificado por lectura
+pero no reproducido en esta ejecución.
+\textbf{Acción previa al bloque III.} Usar registros compatibles con el destino
+y documentar UTF-8 como alternativa operativa. Un mensaje no debe interrumpir
+la inicialización. \textbf{Aceptación.} Verificar salidas CP1252 y UTF-8 sin
+fallos causados por el registro. Complementa P01/P02; limita la afirmación de
+portabilidad de su verificación sin invalidar los demás controles.
+Asignado al bloque I/P01/P02. La continuación introduce salida compatible y
+verifica las 96 pruebas actuales en ambas codificaciones; véase~\ref{sec:bloque3}.
+
+\section{Mantenimiento de la documentación y trazabilidad}
+\label{sec:mantenimiento}
+Cada entrega futura debe actualizar el README operativo y este registro antes de
+declararse terminada. La entrada de cada cambio debe incluir fecha, requisito,
+archivos, comportamiento anterior y actual, motivo, pruebas ejecutadas,
+limitaciones, compatibilidad y tareas adicionales. Los puntos extra deben
+mantener su ID y registrar cuándo pasan de pendientes a implementados o
+descartados, con evidencia.
+
+La descripción de A/B/C permanece como comparación histórica. Las capacidades
+actuales se identifican como flujo consolidado; no se deben corregir los
+originales archivados para que parezca que ya tenían las mejoras. Los resultados
+experimentales de las presentaciones conservan su fecha y contexto.
+
+Una afirmación de mejor rendimiento requiere medidas; una de mejor calidad
+requiere evaluaciones comparables. Las pruebas con modelos simulados acreditan
+contratos y control, pero no sustituyen pruebas con Groq, Nomic y CLAP reales.
+% Estado adicional conservando el diagnóstico histórico.
+\paragraph{18 de octubre de 2026: bloque V.}
+Se incorpora publicación transaccional por generaciones, contexto de snapshot
+por consulta, cola persistente con propiedad temporal y adaptador opcional de
+ingesta. Se evita mezclar recursos o publicar trabajos vencidos; la búsqueda sigue
+operativa durante la ingesta. La decisión de no recuperar checkpoints de búsqueda
+y los costes de copiar índices se documentan en la sección~\ref{sec:bloque5}.
+La calidad real y la compatibilidad de vectores nuevos no están demostradas.
+E17--E19 conservan retención, integración real e instrumentales como pendientes.
+

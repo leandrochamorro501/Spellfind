@@ -1,0 +1,752 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SPELLFIND</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Space+Mono:ital,wght@0,400;0,700;1,400&family=Syne:wght@400;700;800&display=swap" rel="stylesheet" />
+
+  <style>
+    /* ── TOKENS ───────────────────────────────────────────────────────────── */
+    :root {
+      --bg:        #0a0a0a;
+      --surface:   #111111;
+      --border:    #1f1f1f;
+      --accent:    #c8f057;   /* lima ácido — el único color */
+      --text:      #e8e8e8;
+      --muted:     #9a9a9a;
+      --mono:      'Space Mono', monospace;
+      --sans:      'Syne', sans-serif;
+      --radius:    4px;
+      --transition: 180ms ease;
+    }
+
+    /* ── RESET ────────────────────────────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html { font-size: 15px; }
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--sans);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* ── LAYOUT ───────────────────────────────────────────────────────────── */
+    header {
+      padding: 2rem 2.5rem 1.5rem;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: baseline;
+      gap: 1rem;
+    }
+    .logo {
+      font-family: var(--sans);
+      font-weight: 800;
+      font-size: 1.35rem;
+      letter-spacing: -0.02em;
+      color: var(--accent);
+    }
+    .logo-sub {
+      font-family: var(--mono);
+      font-size: 0.7rem;
+      color: var(--muted);
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+    }
+
+    main {
+      flex: 1;
+      padding: 3rem 2.5rem;
+      max-width: 860px;
+      width: 100%;
+      margin: 0 auto;
+    }
+
+    /* ── SEARCH BOX ───────────────────────────────────────────────────────── */
+    .search-wrapper {
+      display: flex;
+      gap: 0;
+      margin-bottom: 2.5rem;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      overflow: hidden;
+      transition: border-color var(--transition);
+    }
+    .search-wrapper:focus-within {
+      border-color: var(--accent);
+    }
+
+    #query-input {
+      min-width: 0;
+      flex: 1;
+      background: var(--surface);
+      border: none;
+      outline: none;
+      color: var(--text);
+      font-family: var(--sans);
+      font-size: 1rem;
+      font-weight: 400;
+      padding: 0.9rem 1.1rem;
+      caret-color: var(--accent);
+    }
+    #query-input::placeholder { color: var(--muted); }
+
+    #search-btn {
+      background: var(--accent);
+      color: #0a0a0a;
+      border: none;
+      padding: 0.9rem 1.4rem;
+      font-family: var(--mono);
+      font-size: 0.75rem;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      cursor: pointer;
+      transition: opacity var(--transition);
+      white-space: nowrap;
+    }
+    #search-btn:hover { opacity: 0.85; }
+    #search-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+    /* ── ESTADO ───────────────────────────────────────────────────────────── */
+    #status-bar {
+      font-family: var(--mono);
+      font-size: 0.72rem;
+      color: var(--muted);
+      margin-bottom: 2rem;
+      min-height: 1.1em;
+      letter-spacing: 0.04em;
+    }
+    #status-bar.running { color: var(--accent); }
+    #status-bar.error   { color: #ff5f5f; }
+
+    /* ── PLAN TRACE (acordeón) ────────────────────────────────────────────── */
+    #plan-trace {
+      margin-bottom: 2rem;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      overflow: hidden;
+      display: none;
+    }
+    .trace-header {
+      display: flex;
+      align-items: center;
+      gap: 0.6rem;
+      padding: 0.65rem 1rem;
+      background: var(--surface);
+      cursor: pointer;
+      user-select: none;
+      border-bottom: 1px solid var(--border);
+    }
+    .trace-header:hover { background: #161616; }
+    .trace-label {
+      font-family: var(--mono);
+      font-size: 0.68rem;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: var(--accent);
+    }
+    .trace-weights {
+      font-family: var(--mono);
+      font-size: 0.68rem;
+      color: var(--muted);
+      margin-left: auto;
+    }
+    .trace-chevron {
+      font-size: 0.6rem;
+      color: var(--muted);
+      transition: transform var(--transition);
+    }
+    .trace-chevron.open { transform: rotate(180deg); }
+    #plan-body {
+      display: none;
+      padding: 1rem;
+      background: #0d0d0d;
+    }
+    #plan-body.open { display: block; }
+    #plan-json {
+      font-family: var(--mono);
+      font-size: 0.7rem;
+      color: #888;
+      white-space: pre-wrap;
+      word-break: break-all;
+      line-height: 1.7;
+    }
+
+    /* ── RESULTADOS ───────────────────────────────────────────────────────── */
+    #results-label {
+      font-family: var(--mono);
+      font-size: 0.68rem;
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+      color: var(--muted);
+      margin-bottom: 1rem;
+      display: none;
+    }
+
+    #results-list {
+      display: flex;
+      flex-direction: column;
+      gap: 1px;
+    }
+
+    .result-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 1rem 1.2rem;
+      display: grid;
+      grid-template-columns: 2rem 1fr auto;
+      align-items: center;
+      gap: 1rem;
+      opacity: 0;
+      transform: translateY(8px);
+      animation: fadeUp 250ms ease forwards;
+    }
+    @keyframes fadeUp {
+      to { opacity: 1; transform: none; }
+    }
+
+    .result-rank {
+      font-family: var(--mono);
+      font-size: 0.7rem;
+      color: var(--muted);
+      text-align: right;
+    }
+
+    .result-meta { min-width: 0; }
+    .result-title {
+      font-weight: 700;
+      font-size: 0.95rem;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      margin-bottom: 0.25rem;
+    }
+    .result-artist {
+      font-family: var(--mono);
+      font-size: 0.7rem;
+      color: var(--muted);
+    }
+    .result-tags {
+      display: flex;
+      gap: 0.4rem;
+      margin-top: 0.35rem;
+      flex-wrap: wrap;
+    }
+    .tag {
+      font-family: var(--mono);
+      font-size: 0.6rem;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      padding: 0.15rem 0.45rem;
+      border: 1px solid var(--border);
+      border-radius: 2px;
+      color: var(--muted);
+    }
+    .tag.genre { border-color: #2a2a2a; color: #777; }
+
+    .result-score {
+      text-align: right;
+    }
+    .score-bar-wrap {
+      width: 60px;
+      height: 3px;
+      background: var(--border);
+      border-radius: 2px;
+      overflow: hidden;
+      margin-bottom: 0.3rem;
+    }
+    .score-bar {
+      height: 100%;
+      background: var(--accent);
+      border-radius: 2px;
+      transition: width 400ms ease;
+    }
+    .score-num {
+      font-family: var(--mono);
+      font-size: 0.65rem;
+      color: var(--muted);
+    }
+
+    /* ── EMPTY / SKELETON ─────────────────────────────────────────────────── */
+    .skeleton {
+      height: 72px;
+      background: linear-gradient(90deg, var(--surface) 25%, #161616 50%, var(--surface) 75%);
+      background-size: 200% 100%;
+      animation: shimmer 1.2s infinite;
+      border-radius: var(--radius);
+      border: 1px solid var(--border);
+    }
+    @keyframes shimmer {
+      0%   { background-position: 200% 0; }
+      100% { background-position: -200% 0; }
+    }
+
+    .empty-state {
+      font-family: var(--mono);
+      font-size: 0.75rem;
+      color: var(--muted);
+      padding: 2rem 0;
+      text-align: center;
+    }
+
+    /* ── FOOTER ───────────────────────────────────────────────────────────── */
+    footer {
+      padding: 1rem 2.5rem;
+      border-top: 1px solid var(--border);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .footer-mono {
+      font-family: var(--mono);
+      font-size: 0.65rem;
+      color: var(--muted);
+      letter-spacing: 0.06em;
+    }
+    #health-dot {
+      display: inline-block;
+      width: 6px; height: 6px;
+      border-radius: 50%;
+      background: var(--muted);
+      margin-right: 0.4rem;
+      vertical-align: middle;
+    }
+    #health-dot.ok  { background: var(--accent); }
+    #health-dot.err { background: #ff5f5f; }
+    .search-wrapper { margin-bottom: 1rem; }
+    #search-options { border: 1px solid var(--border); padding: 1rem; margin-bottom: 1.5rem; }
+    #search-options summary { cursor: pointer; font-size: .9rem; }
+    .option-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; margin-top: 1rem; }
+    .option-grid label { display: flex; flex-direction: column; gap: .4rem; font-size: .8rem; }
+    .option-grid input, .option-grid select {
+      width: 100%; min-width: 0; padding: .6rem; color: var(--text);
+      background: var(--surface); border: 1px solid #555; border-radius: var(--radius);
+      font: inherit;
+    }
+    .option-grid input[type=range] { accent-color: var(--accent); }
+    .control-note, #filter-summary, .score-explanation { font-size: .75rem; color: var(--muted); line-height: 1.6; margin-top: .7rem; }
+    #filter-summary { margin-bottom: 1rem; }
+    .score-explanation { margin-bottom: 1rem; }
+    .result-artist, .score-components { line-height: 1.7; }
+    .score-components { margin-top: .6rem; font-family: var(--mono); font-size: .68rem; color: var(--muted); }
+    .lyric-excerpt { border-left: 2px solid var(--accent); padding: .6rem .8rem; margin-top: .8rem; white-space: pre-wrap; font-size: .85rem; line-height: 1.6; }
+    .evidence-label, .result-note { display: block; color: var(--muted); font-size: .73rem; line-height: 1.6; margin-top: .4rem; }
+    .result-score { align-self: start; }
+    .result-note strong { color: var(--accent); }
+    #ingest-panel { border: 1px solid var(--border); margin-top: 2rem; padding: 1rem; }
+    #ingest-panel summary { cursor: pointer; }
+    #ingest-panel .instrumental-option { display:flex; flex-direction:row; align-items:center; gap:.6rem; margin:1rem 0; font-size:.85rem; }
+    #ingest-panel .instrumental-option input[type=checkbox] { width:1rem; height:1rem; min-height:0; padding:0; margin:0; flex:none; }
+    #ingest-form { margin-top: 1rem; }
+    #ingest-form label { display: flex; flex-direction: column; font-size: .8rem; gap: .5rem; }
+    #ingest-form input { background: var(--surface); color: var(--text); border: 1px solid #555; padding: .7rem; width: 100%; }
+    #ingest-btn { padding: .7rem 1rem; background: var(--accent); border: 0; margin-top: .8rem; cursor: pointer; }
+    #ingest-btn:disabled { opacity: .4; cursor: not-allowed; }
+    #ingest-progress { width: 100%; margin-top: .8rem; accent-color: var(--accent); }
+    .result-audio { margin-top: .8rem; max-width: 100%; }
+    @media (max-width: 580px) {
+      main { padding: 1.5rem 1rem; }
+      header, footer { padding-left: 1rem; padding-right: 1rem; }
+      .option-grid { grid-template-columns: 1fr; }
+      .result-card { grid-template-columns: 1.2rem minmax(0, 1fr); padding: .8rem; gap: .6rem; }
+      .result-score { grid-column: 2; text-align: left; }
+      .result-title { white-space: normal; }
+      footer { gap: 1rem; flex-wrap: wrap; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- ── HEADER ──────────────────────────────────────────────────────────────── -->
+<header>
+  <span class="logo">SPELLFIND</span>
+  <span class="logo-sub">Multimodal · v0.1</span>
+</header>
+
+<!-- ── MAIN ────────────────────────────────────────────────────────────────── -->
+<main>
+
+  <!-- Search box -->
+  <form id="search-form">
+  <div class="search-wrapper">
+    <input
+      id="query-input"
+      aria-label="Descripción de la canción"
+      type="text"
+      placeholder="Describe una canción: mood, ritmo, instrumentos, temática..."
+      autocomplete="off"
+      spellcheck="false"
+    />
+    <button id="search-btn" type="submit">Buscar</button>
+  </div>
+  <details id="search-options" open>
+    <summary>Preferencias y filtros</summary>
+    <div class="option-grid">
+      <label>Pesos de recuperación
+        <select id="weight-mode"><option value="auto">Automáticos según la consulta</option><option value="custom">Personalizados</option></select>
+      </label>
+      <label>Importancia de la letra <span id="weight-label">60% letra · 40% audio</span>
+        <input id="lyrics-weight" type="range" min="0" max="100" value="60" disabled />
+      </label>
+      <label>Artista exacto<input id="artist-filter" list="catalog-artists" placeholder="Todos los artistas" maxlength="300" /></label>
+      <datalist id="catalog-artists"></datalist>
+      <label>Género del catálogo<input id="genre-filter" list="catalog-genres" placeholder="Todos los géneros" maxlength="300" /></label>
+      <datalist id="catalog-genres"></datalist>
+      <label>Desde el año<input id="year-min" type="number" min="1" max="9999" step="1" placeholder="Sin límite" /></label>
+      <label>Hasta el año<input id="year-max" type="number" min="1" max="9999" step="1" placeholder="Sin límite" /></label>
+    </div>
+    <p class="control-note">Los pesos cambian el orden, sin eliminar las restricciones de la consulta. Un peso cero desactiva esa rama de recuperación. Los filtros se combinan y usan los metadatos del catálogo; no se infieren del sonido.</p>
+    <p id="catalog-note" class="control-note"></p>
+  </details>
+  </form>
+
+  <!-- Status bar -->
+  <div id="status-bar" role="status" aria-live="polite"></div>
+  <div id="filter-summary"></div>
+
+  <!-- Plan trace (acordeón) -->
+  <div id="plan-trace">
+    <div class="trace-header" id="trace-toggle">
+      <span class="trace-label">▸ Traza del planificador</span>
+      <span class="trace-weights" id="trace-weights"></span>
+      <span class="trace-chevron" id="trace-chevron">▼</span>
+    </div>
+    <div id="plan-body">
+      <pre id="plan-json"></pre>
+    </div>
+  </div>
+
+  <!-- Results label -->
+  <div id="results-label">Resultados</div>
+  <p class="score-explanation">La puntuación de recuperación va de 0 a 1 y combina posiciones en los rankings. No es una probabilidad ni un porcentaje de acierto.</p>
+
+  <!-- Results -->
+  <div id="results-list"></div>
+  <details id="ingest-panel">
+    <summary>Añadir una canción desde YouTube</summary>
+    <p id="ingest-availability" class="control-note">Comprobando disponibilidad…</p>
+    <form id="ingest-form">
+      <label>Enlace del vídeo<input id="ingest-url" type="url" required maxlength="2048" placeholder="https://www.youtube.com/watch?v=…" /></label>
+      <div class="option-grid">
+        <label>Artista, si lo conoces<input id="ingest-artist" maxlength="300" /></label>
+        <label>Género del catálogo, si lo conoces<input id="ingest-genre" maxlength="300" /></label>
+        <label>Año de la canción, si lo conoces<input id="ingest-year" type="number" min="1" max="9999" step="1" /></label>
+      </div>
+      <label class="instrumental-option"><input id="ingest-instrumental" type="checkbox" /><span>Instrumental: añadir sólo audio, sin transcribir letras</span></label>
+      <button id="ingest-btn" disabled type="submit">Añadir en segundo plano</button>
+    </form>
+    <progress id="ingest-progress" max="100" value="0" aria-label="Etapa de ingesta"></progress>
+    <p id="ingest-job" class="control-note" role="status" aria-live="polite">No hay un trabajo seleccionado.</p>
+    <p class="control-note">La búsqueda sigue disponible. Se priorizan subtítulos oficiales y se usa transcripción como alternativa. Los metadatos y la letra pueden requerir revisión; el año de subida no se usa como año de la canción.</p>
+  </details>
+
+</main>
+
+<!-- ── FOOTER ──────────────────────────────────────────────────────────────── -->
+<footer>
+  <span class="footer-mono">
+    <span id="health-dot"></span>
+    <span id="health-text">comprobando motor...</span>
+  </span>
+  <span class="footer-mono">Plan-and-Execute · Late Fusion RRF</span>
+</footer>
+
+<!-- ── SCRIPT ──────────────────────────────────────────────────────────────── -->
+<script>
+  const input     = document.getElementById('query-input');
+  const btn       = document.getElementById('search-btn');
+  const statusBar = document.getElementById('status-bar');
+  const planTrace = document.getElementById('plan-trace');
+  const planBody  = document.getElementById('plan-body');
+  const planJson  = document.getElementById('plan-json');
+  const traceWeights = document.getElementById('trace-weights');
+  const traceChevron = document.getElementById('trace-chevron');
+  const resultsList  = document.getElementById('results-list');
+  const resultsLabel = document.getElementById('results-label');
+  const weightMode = document.getElementById('weight-mode');
+  const lyricWeight = document.getElementById('lyrics-weight');
+  weightMode.addEventListener('change', () => { lyricWeight.disabled = weightMode.value !== 'custom'; });
+  lyricWeight.addEventListener('input', () => {
+    document.getElementById('weight-label').textContent = `${lyricWeight.value}% letra · ${100 - Number(lyricWeight.value)}% audio`;
+  });
+
+  async function refreshCatalogOptions() {
+    try {
+      const response = await fetch('/catalog/options');
+      const data = await response.json();
+      if (!response.ok) throw new Error('Catálogo no disponible');
+      for (const [id, values] of [['catalog-artists', data.artists], ['catalog-genres', data.genres]]) {
+        document.getElementById(id).replaceChildren();
+        for (const value of values) {
+          const option = document.createElement('option'); option.value = value;
+          document.getElementById(id).appendChild(option);
+        }
+      }
+      document.getElementById('catalog-note').textContent = `Catálogo: ${data.songs} canciones · años ${data.year_min ?? '—'}–${data.year_max ?? '—'}. Los nombres coinciden completos, ignorando mayúsculas y espacios exteriores.`;
+    } catch {
+      document.getElementById('catalog-note').textContent = 'No se pudieron cargar las sugerencias. Puedes escribir filtros exactos.';
+    }
+  }
+  refreshCatalogOptions();
+
+  // ── Health check al cargar ───────────────────────────────────────────────
+  async function refreshHealth() {
+    const dot  = document.getElementById('health-dot');
+    const text = document.getElementById('health-text');
+    try {
+      const r = await fetch('/health');
+      const d = await r.json();
+      if (d.ready) {
+        dot.className  = 'ok';
+        text.textContent = `Motor listo · ${d.songs} canciones · ${d.lyrics_vectors} vectores lírica · ${d.audio_vectors} vectores audio`;
+      } else {
+        dot.className  = 'err';
+        text.textContent = `Motor no listo: ${d.error || 'error desconocido'}`;
+      }
+    } catch {
+      dot.className  = 'err';
+      text.textContent = 'No se pudo conectar con el servidor';
+    }
+  }
+  refreshHealth();
+
+  const ingestButton = document.getElementById('ingest-btn');
+  let ingestReady = false;
+  let ingestTimer = null;
+  let ingestCurrent = null;
+  const ingestStates = {queued:'En cola', starting:'Iniciando', downloading:'Descargando audio',
+    transcribing:'Obteniendo la letra', embedding_lyrics:'Procesando letra', embedding_audio:'Procesando audio',
+    publishing:'Publicando catálogo', completed:'Completado', failed:'Falló', interrupted:'Interrumpido'};
+  async function pollIngestion(jobId) {
+    if (jobId !== ingestCurrent) return;
+    try {
+      const response = await fetch(`/ingest/jobs/${encodeURIComponent(jobId)}`);
+      const data = await response.json();
+      if (jobId !== ingestCurrent) return;
+      if (!response.ok) throw new Error(data.error || 'No se pudo consultar el trabajo');
+      const job = data.job;
+      document.getElementById('ingest-progress').value = job.progress;
+      document.getElementById('ingest-job').textContent = `${ingestStates[job.stage] || job.stage} · ${job.id}${job.error ? ' · ' + job.error : ''}${job.result?.note ? ' · ' + job.result.note : ''}`;
+      const terminal = ['completed','failed','interrupted'].includes(job.status);
+      if (terminal) {
+        ingestButton.disabled = !ingestReady;
+        if (job.status === 'completed') { refreshHealth(); refreshCatalogOptions(); }
+      } else {
+        ingestButton.disabled = true;
+        ingestTimer = setTimeout(() => pollIngestion(jobId), 1500);
+      }
+    } catch (error) {
+      if (jobId !== ingestCurrent) return;
+      document.getElementById('ingest-job').textContent = error.message;
+      ingestButton.disabled = !ingestReady;
+    }
+  }
+  (async () => {
+    try {
+      const response = await fetch('/ingest/status'); const status = await response.json();
+      ingestReady = status.enabled && status.ready;
+      ingestButton.disabled = !ingestReady;
+      document.getElementById('ingest-availability').textContent = !status.enabled
+        ? 'La ingesta está desactivada en esta instalación. Consulta la guía de instalación.'
+        : !status.ready ? `Faltan herramientas de ingesta: ${(status.missing || []).join(', ')}.`
+        : 'Ingesta disponible. La primera ejecución puede necesitar preparar modelos. Los límites y errores se informan por trabajo.';
+      let last = null;
+      try { last = localStorage.getItem('spellfind.latestIngestion'); } catch {}
+      if (last && /^[a-f0-9]{32}$/.test(last)) { ingestCurrent = last; pollIngestion(last); }
+    } catch { document.getElementById('ingest-availability').textContent = 'No se pudo comprobar la ingesta.'; }
+  })();
+  document.getElementById('ingest-form').addEventListener('submit', async event => {
+    event.preventDefault(); if (!ingestReady || ingestButton.disabled) return;
+    const payload = {url: document.getElementById('ingest-url').value.trim()};
+    payload.instrumental = document.getElementById('ingest-instrumental').checked;
+    for (const name of ['artist','genre','year']) {
+      const value = document.getElementById('ingest-'+name).value.trim();
+      if (value) payload[name] = name === 'year' ? Number(value) : value;
+    }
+    ingestButton.disabled = true;
+    ingestCurrent = null;
+    if (ingestTimer) clearTimeout(ingestTimer);
+    try {
+      const response = await fetch('/ingest', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload)});
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'No se pudo crear el trabajo');
+      ingestCurrent = data.job.id;
+      try { localStorage.setItem('spellfind.latestIngestion', data.job.id); } catch {}
+      pollIngestion(data.job.id);
+    } catch (error) {
+      document.getElementById('ingest-job').textContent = error.message;
+      ingestButton.disabled = !ingestReady;
+    }
+  });
+
+  // ── Toggle traza ─────────────────────────────────────────────────────────
+  document.getElementById('trace-toggle').addEventListener('click', () => {
+    const open = planBody.classList.toggle('open');
+    traceChevron.classList.toggle('open', open);
+  });
+
+  // ── Búsqueda ─────────────────────────────────────────────────────────────
+  async function doSearch() {
+    const query = input.value.trim();
+    if (!query) return;
+    const payload = { query };
+    if (weightMode.value === 'custom') {
+      const lyrics = Number(lyricWeight.value) / 100;
+      payload.weights = { lyrics, audio: 1 - lyrics };
+    }
+    const filters = {};
+    for (const [id, field] of [['artist-filter', 'artist'], ['genre-filter', 'genre'], ['year-min', 'year_min'], ['year-max', 'year_max']]) {
+      const value = document.getElementById(id).value.trim();
+      if (value) filters[field] = field.startsWith('year_') ? Number(value) : value;
+    }
+    if (filters.year_min != null && filters.year_max != null && filters.year_min > filters.year_max) {
+      setStatus('error', 'El año inicial no puede ser posterior al final.'); return;
+    }
+    if (Object.keys(filters).length) payload.filters = filters;
+
+    // Estado: cargando
+    btn.disabled = true;
+    setStatus('running', '● buscando...');
+    showSkeletons();
+    planTrace.style.display = 'none';
+    resultsLabel.style.display = 'none';
+    document.getElementById('filter-summary').textContent = '';
+
+    try {
+      const res  = await fetch('/search', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify(payload),
+      });
+      const data = await res.json();
+
+      if (data.error) {
+        setStatus('error', `✕ ${data.error}`);
+        resultsList.innerHTML = '';
+        return;
+      }
+
+      // Mostrar traza del planificador
+      renderPlan(data);
+
+      // Mostrar resultados
+      renderResults(data.results);
+      const applied = data.filters || {};
+      const names = {artist: 'Artista', genre: 'Género', year_min: 'Desde', year_max: 'Hasta'};
+      const count = data.filter_summary?.matched_catalog_songs;
+      document.getElementById('filter-summary').textContent = Object.keys(applied).length
+        ? `${Object.keys(names).filter(key => applied[key] != null).map(key => `${names[key]}: ${applied[key]}`).join(' · ')} · ${count ?? '—'} ${count === 1 ? 'coincidencia' : 'coincidencias'} en el catálogo.`
+        : 'Sin filtros de metadatos.';
+
+      const n = data.results.length;
+      const from = `lírica:${data.n_lyrics ?? '—'} · audio:${data.n_audio ?? '—'}`;
+      setStatus(data.judge_status === 'error' ? 'error' : '', data.warning || `${n} resultado${n !== 1 ? 's' : ''} · ${from}`);
+
+    } catch (err) {
+      setStatus('error', `✕ Error de red: ${err.message}`);
+      resultsList.innerHTML = '';
+    } finally {
+      btn.disabled = false;
+    }
+  }
+
+  document.getElementById('search-form').addEventListener('submit', event => { event.preventDefault(); if (!btn.disabled) doSearch(); });
+
+  // ── Helpers de UI ────────────────────────────────────────────────────────
+  function setStatus(cls, msg) {
+    statusBar.className = cls;
+    statusBar.textContent = msg;
+  }
+
+  function showSkeletons(n = 5) {
+    resultsList.innerHTML = Array.from({ length: n })
+      .map(() => `<div class="skeleton"></div>`)
+      .join('');
+  }
+
+  function renderPlan(data) {
+    if (!data.plan) return;
+    planTrace.style.display = 'block';
+    planJson.textContent = JSON.stringify(data.plan, null, 2);
+    const lw = data.lyric_weight != null ? (data.lyric_weight * 100).toFixed(0) : '—';
+    const aw = data.audio_weight  != null ? (data.audio_weight  * 100).toFixed(0) : '—';
+    traceWeights.textContent = `lírica ${lw}% · audio ${aw}%`;
+  }
+
+  function renderResults(results) {
+    resultsList.innerHTML = '';
+
+    if (!results || results.length === 0) {
+      resultsList.innerHTML = '<div class="empty-state">Sin resultados para esta búsqueda.</div>';
+      resultsLabel.style.display = 'none';
+      return;
+    }
+
+    resultsLabel.style.display = 'block';
+
+    results.forEach((r, i) => {
+      const card = document.createElement('div');
+      card.className = 'result-card';
+      card.style.animationDelay = `${i * 60}ms`;
+
+      const tags  = [r.tag, r.year].filter(Boolean);
+      const states = {approved:'validada', rejected:'rechazada', not_evaluated:'sin evaluar',
+                        not_requested:'no solicitada', abstained:'evidencia insuficiente', error:'error'};
+      const validation = r.validation || {};
+      const evidence = `Letra: ${states[validation.lyrics?.status] || 'sin evaluar'} · Audio: ${states[validation.audio?.status] || 'sin evaluar'}`;
+      card.appendChild(textNode('div', 'result-rank', String(i + 1).padStart(2, '0')));
+      const meta = textNode('div', 'result-meta', '');
+      meta.appendChild(textNode('div', 'result-title', r.title));
+      meta.appendChild(textNode('div', 'result-artist', r.artist));
+      meta.appendChild(textNode('div', 'result-artist', evidence));
+      meta.appendChild(textNode('div', 'result-note', r.selection_reason === 'validated_recommendation'
+        ? 'Recomendación priorizada por la evaluación lírica.' : 'Resultado por recuperación; no implica aprobación del juez.'));
+      const tagList = textNode('div', 'result-tags', '');
+      tags.forEach(tag => tagList.appendChild(textNode('span', 'tag genre', tag)));
+      meta.appendChild(tagList);
+      for (const [name, label] of [['lyrics', 'Letra'], ['audio', 'Audio']]) {
+        const part = r.score_components?.[name];
+        if (part) meta.appendChild(textNode('div', 'score-components',
+          `${label}: aporte ${Number(part.contribution).toFixed(4)} · peso ${(Number(part.weight)*100).toFixed(0)}% · posición ${part.rank ?? 'sin coincidencia'}`));
+      }
+      if (r.lyric_excerpt) {
+        meta.appendChild(textNode('blockquote', 'lyric-excerpt', r.lyric_excerpt.text));
+        meta.appendChild(textNode('span', 'evidence-label', r.lyric_excerpt.label + (r.lyric_excerpt.truncated ? ' · extracto recortado' : '')));
+      }
+      if (validation.lyrics?.reason) meta.appendChild(textNode('p', 'result-note', `Evaluación lírica: ${validation.lyrics.reason}`));
+      const conditions = Array.isArray(r.condition_verdicts) ? r.condition_verdicts : [];
+      const conditionLabels = {meets:'comprobada', contradicts:'contradicha', unverified:'sin comprobar'};
+      if (conditions.length) meta.appendChild(textNode('p', 'result-note',
+        `Condiciones: ${conditions.map(v => `${v.condition || v.scope || 'aspecto'} (${conditionLabels[v.status] || 'sin comprobar'})`).join(' · ')}`));
+      if (validation.lyrics?.format === 'legacy') meta.appendChild(textNode('p', 'result-note', 'La decisión no aporta citas verificadas; el fragmento es orientativo.'));
+      if (r.lyrics_source) {
+        const origins = {official_subtitles:'subtítulos oficiales', whisper:'transcripción Whisper', controlled_fixture:'control de prueba'};
+        meta.appendChild(textNode('p', 'result-note', r.lyrics_source === 'none_user_declared_instrumental'
+          ? 'Sin letra: instrumental declarado al añadirlo. La ausencia de voces no se ha verificado acústicamente.'
+          : `Origen del texto: ${origins[r.lyrics_source] || 'no verificado'}. Su exactitud puede requerir revisión.`));
+      }
+      if (typeof r.audio_url === 'string' && /^\/catalog\/[a-f0-9]{32}\/songs\/\d+\/audio$/.test(r.audio_url)) {
+        const audio = document.createElement('audio'); audio.controls = true; audio.preload = 'none';
+        audio.src = r.audio_url; audio.className = 'result-audio'; meta.appendChild(audio);
+      }
+      card.appendChild(meta);
+      const value = Number(r.score);
+      card.appendChild(textNode('div', 'result-score score-num', Number.isFinite(value) ? `Puntuación ${value.toFixed(4)}` : 'Sin puntuación'));
+
+      resultsList.appendChild(card);
+    });
+  }
+
+  function textNode(tag, cls, text) {
+    const node = document.createElement(tag); node.className = cls; node.textContent = String(text ?? ''); return node;
+  }
+
+</script>
+
+</body>
+</html>

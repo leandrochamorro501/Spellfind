@@ -1,0 +1,160 @@
+\section{Ejecución del bloque II: P05--P08}
+\label{sec:bloque2}
+\textbf{Fecha: 18 de octubre de 2026.} Se implementaron propiedad del estado,
+rutas por modalidad, procedencia de restricciones y un fallback conservador.
+Se mantienen pendientes las mediciones con modelos reales y anotaciones humanas.
+Este bloque cambia algunos estados de la API y reduce deliberadamente la
+cobertura automática de interpretaciones inciertas; no es una mejora universal.
+
+\subsection{P05: estado serializable y propietario único de exclusiones}
+\textbf{Antes.} Juez y grafo podían escribir el pool. La idempotencia evitaba
+duplicados, pero el estado contenía un objeto de pool y una caché, inadecuados
+como contrato de persistencia.
+
+\textbf{Ahora.} El juez devuelve decisiones sin mutar exclusiones. El único
+punto de escritura del flujo es el nodo de evaluación del orquestador.
+El estado contiene listas y diccionarios serializables: decisiones, exclusiones,
+versión de plan, candidatos y evidencia. La caché de recuperación queda fuera
+del estado, ligada a la instancia de grafo creada para una solicitud.
+El antiguo argumento de pool se admite por compatibilidad, pero se ignora;
+el tipo auxiliar no participa en el flujo actual.
+
+Cada exclusión registra candidato, motivo, iteración, alcance y versión del
+plan. Los datos inexistentes se excluyen para toda la solicitud; las decisiones
+dependientes de las consultas se vinculan al plan evaluado. Un rechazo histórico
+no reaparece como alternativa sin evaluar: solo el candidato seleccionado puede
+volver después de reevaluarse con un plan nuevo. Se conserva la decisión previa
+en el historial.
+
+\textbf{Evidencia.} Pruebas de estado convertible a JSON sin objetos opacos,
+decisión pura del juez, escritura única por rechazo y solicitudes concurrentes
+con estados separados. \textbf{Ventaja.} Se puede auditar quién decidió qué y
+con qué plan; desaparece la doble responsabilidad de mutación.
+\textbf{Límite.} No se añadió almacenamiento durable ni reanudación. La caché
+fuera del estado no se guarda al serializar. Reutilizar el grafo o añadir
+checkpoints necesita el trabajo de P16/P18.
+
+\subsection{P06: modalidades e instrumentales sin aprobación acústica ficticia}
+\textbf{Antes.} El flujo exigía letras a cualquier candidato e invocaba al juez
+incluso para consultas acústicas. Una aprobación lírica podía confundirse con
+una aprobación multimodal.
+
+\textbf{Ahora.} Una consulta solo acústica omite el juez lírico, admite candidatos
+sin letra y termina como \code{retrieved}: recuperado, con audio
+\code{not_evaluated}. Una consulta solo lírica puede terminar como
+\code{approved}. Si la letra se aprueba y también se pidió audio, la terminación
+es \code{partially_validated}; el sonido sigue sin evaluación independiente.
+
+Cada resultado informa \code{validation.lyrics} y \code{validation.audio}, con
+estados de aprobado, rechazado, error, no solicitado o no evaluado. La interfaz
+muestra esos estados. Una ausencia de letra en una solicitud que sí la requiere
+se registra como falta de evidencia, no como rechazo de un LLM que no fue llamado.
+\code{judge_iterations} cuenta invocaciones reales al juez; el contador de
+selecciones queda en \code{candidate_iterations}.
+
+\textbf{Evidencia.} Instrumentales sin letra, omisión de llamadas al juez,
+validación parcial en consultas mixtas y respuestas de Flask real.
+\textbf{Ventaja.} Evita descartar instrumentales por una condición ajena a su
+modalidad y declara el alcance de la evidencia.
+\textbf{Límite.} CLAP sigue proporcionando recuperación, no certificación de
+instrumentos, voces o energía. La calidad de la ruta acústica no se ha medido.
+Las restricciones líricas negativas también requieren evaluación aunque no haya un tema positivo lírico. El presupuesto todavía cuenta selecciones; su separación completa sigue en P11.
+
+\subsection{P07: restricciones con origen y reparación del plan}
+\textbf{Antes.} Todos los negativos quedaban inmóviles, aunque fueran una
+inferencia equivocada. Tampoco podía activarse una modalidad omitida por el router.
+
+\textbf{Ahora.} \code{intent.py} prepara restricciones con ID, modalidad,
+polaridad, texto, origen y cita. \code{user_explicit} exige una cita literal del
+usuario; una negativa debe incluir una negación reconocida. Lo no fundamentado
+se registra como \code{model_hypothesis}. Las restricciones explícitas capturadas
+se conservan; las hipótesis pueden corregirse o retirarse.
+
+Una modalidad puede activarse o desactivarse para corregir la intención si se
+aporta una cita y diagnóstico de esa corrección. Cambiar audio siempre requiere
+evidencia textual con una señal de modalidad soportada: un rechazo lírico por
+sí solo no justifica describir como incorrecto el sonido de una canción no oída.
+Un cambio de plan se versiona y sus decisiones se reevaluarán bajo esa versión.
+Las modalidades no seleccionadas permanecen intactas.
+
+Se rechaza un plan que omita anclar una negación visible del usuario. Este
+control usa señales léxicas, no una comprensión completa del lenguaje. El prompt
+del router ahora pide procedencia y listas vacías para modalidades no solicitadas.
+Se probó el formateo con la plantilla LangChain real para que los ejemplos JSON
+no introduzcan variables de plantilla inexistentes.
+
+\textbf{Evidencia.} Pruebas de eliminación de hipótesis, conservación de
+restricciones explícitas, citas inventadas o sin negación, corrección de
+modalidades y reevaluación después de cambiar de plan.
+\textbf{Ventaja.} Separa decisiones revisables de restricciones que el usuario
+declaró y evita perderlas silenciosamente.
+\textbf{Límite importante.} Verificar una cita no demuestra que su traducción
+inglesa sea semánticamente fiel. Un modelo todavía puede inferir demasiado al
+etiquetar una restricción como explícita. Se registra E13 para calibrarlo.
+
+\subsection{P08: fallback limitado, trazable y con abstención}
+\textbf{Antes.} El respaldo copiaba la consulta cruda en ambas modalidades,
+con negativos vacíos, sin garantía de idioma o intención.
+
+\textbf{Ahora.} Puede reutilizarse un plan válido únicamente si está asociado
+a la misma consulta exacta. La función permite esa recuperación, pero no guarda
+un historial global de consultas ni se conecta todavía a una persistencia.
+Cuando no hay plan previo, una gramática local acotada interpreta frases de
+sonido soportadas en español e inglés, conserva las negaciones reconocidas y
+registra sus citas. Por ejemplo, piano lento sin voces produce consultas
+acústicas positivas y una negativa de voces, con la rama lírica vacía.
+
+Si quedan palabras o alcances de negación sin interpretar, se devuelve
+\code{clarification_needed}, listas de búsqueda vacías y una advertencia de
+reformulación. No se llama a workers ni al juez. No se promete traducción
+general, interpretación lírica offline ni extracción arbitraria de negativos.
+La respuesta HTTP es 200 con ese estado: el JSON es válido, pero no se ejecutó
+una búsqueda de significado incierto.
+
+\textbf{Evidencia.} Frases bilingües soportadas, restricciones negativas,
+negaciones ambiguas, planes previos de otra consulta y fallo del router.
+\textbf{Ventaja.} La degradación no presenta como fiel una consulta que perdió
+restricciones. \textbf{Coste.} Hay consultas para las que el respaldo devuelve
+menos resultados o ninguno y exige reformular; la cobertura y satisfacción
+necesitan medición antes de ampliar reglas.
+
+\subsection{Resultados de control y regresiones observadas}
+La suite pasó 72 pruebas en el entorno del bloque I, con Flask, FAISS y
+LangGraph reales y proveedores/modelos simulados. Se actualizaron expectativas
+anteriores para los estados nuevos y el juez sin efectos laterales; no se
+eliminaron los casos de regresión originales.
+
+Se ejecutaron 36 corridas simuladas sin refinamiento y 36 con refinamiento.
+En cada serie se observaron 12 aprobaciones líricas, 6 validaciones parciales,
+12 recuperaciones acústicas sin validación independiente y 6 solicitudes de
+reformulación. Estas últimas corresponden a dos consultas repetidas tres veces:
+\code{negative_romance} y \code{instrumental_study}. Sus planes sintéticos
+anteriores no incluyen la procedencia requerida para las negaciones y la
+gramática limitada no cubre toda la petición. El fixture original se mantuvo
+para que ese cambio de cobertura sea visible.
+
+No hubo errores del flujo. Se registran por separado reconsideraciones históricas
+y reapariciones de excluidos sin reevaluación; las segundas deben permanecer en
+cero. Jaccard solo se calcula cuando hay resultados; una respuesta sin ranking
+no recibe un 1 ficticio. Las métricas musicales continúan nulas. La ejecución
+real se mantuvo bloqueada sin llamar al proveedor.
+
+Esto demuestra controles adicionales, no mejor relevancia musical. La reducción
+de cobertura automática es una contrapartida explícita; E02/P12 deben evaluar
+si conviene ampliar el respaldo o cambiar la estrategia con evidencia real.
+Los informes del bloque I se conservaron; los actuales están en
+\code{validation/block2/} y llevan el identificador \code{block2-pre-P09}.
+
+\subsection{Compatibilidad y trabajo que no se cierra}
+La API añade \code{retrieved}, \code{partially_validated} y
+\code{clarification_needed}; clientes que esperaban solo aprobación/error/límite
+deben interpretar estos estados. \code{validation_scope} puede ser
+\code{none}; \code{constraints}, \code{plan_version} y validación por resultado
+permiten inspeccionar la evidencia. El argumento legado de pool ya no aplica
+exclusiones por sí mismo. Los locks no cambiaron y no se instalaron dependencias.
+
+P05--P08 tienen implementación y verificación de control. Se cubren la propiedad
+única de E08, las rutas de E01 y los controles de E02/E03. Persistencia, evidencia
+acústica independiente, fidelidad semántica y evaluación real siguen abiertas.
+Los siguientes puntos de implementación son P09--P12, no la ampliación de la UI
+o ingesta. La recuperación parcial ante fallos del refinador sigue pendiente.

@@ -1,0 +1,11 @@
+# Direct runtime dependencies. Freeze a clean Windows/Python 3.12 environment.
+Flask>=3.1,<4
+waitress>=3,<4
+numpy>=2.2,<3
+pandas>=2.2,<4
+faiss-cpu>=1.10,<2
+langchain-core>=1.4,<2
+langchain-groq>=1.1,<2
+langgraph>=1.2,<2
+python-dotenv>=1.1,<2
+requests>=2.32,<3

@@ -1,0 +1,94 @@
+\section{Corrección de pendientes tras la auditoría de bloques I--IV}
+\label{sec:correcciones_pendientes}
+La auditoría reprodujo dos debilidades que las 140 pruebas originales no
+detectaban: aceptar una traducción equivocada como explícita y aprobar con un
+veredicto antiguo sin citas. Se conservan las capturas históricas; las nuevas
+pruebas y resultados se guardan en \code{validation/pending_fixes/}.
+
+\subsection{P07--P08/E13: correspondencia de restricciones y abstención}
+Antes bastaba que una cita existiera y contuviera una negación: ``sin romance''
+podía vincularse al descriptor \emph{violence}. Ahora \code{intent.py} exige
+igualdad de frase normalizada o una equivalencia explícitamente revisada. Las
+equivalencias son específicas de modalidad y no se aceptan porque el modelo
+declare que son correctas. No se eliminan acentos para comparar evidencia.
+Una traducción desconocida, ampliación no justificada o inversión de polaridad
+provoca error de validación y aclaración mediante el fallback seguro. También
+se revalidan restricciones explícitas heredadas de un plan previo.
+
+Se exige que una cita negativa incluya su negación al comienzo y conserve todos
+los conceptos de una conjunción. Una cita corta seguida de continuación de lista
+no acredita el alcance completo. Se rechazan dobles negaciones, construcciones
+``no solo'' y contradicciones entre restricciones explícitas. Los casos
+acústicos completamente reconocidos mantienen su gramática determinista.
+El prompt pide descriptores mínimos y aclaración cuando no pueda verificarse
+una traducción. El control de alcance no pretende resolver toda la gramática.
+
+\textbf{Por qué es mejor.} Se elimina el camino demostrado de etiquetar una
+traducción incorrecta como evidencia verificada. La comprobación local no depende
+de que otro modelo confirme al primero. \textbf{Coste y alternativa.} Se pierde
+cobertura: paráfrasis válidas no incluidas pueden pedir aclaración. Es preferible
+a buscar ocultando una restricción; un verificador semántico más amplio sólo debe
+añadirse con corpus anotado, tasas de error y abstención medidos. E13 queda
+corregido para este contrato conservador; la fidelidad general sigue pendiente
+de evaluación humana P04/P10/P12.
+
+\subsection{P10: evidencia uniforme para decisiones del juez}
+El cliente ya no registra herramientas de exclusión. Sólo se aplican decisiones
+JSON estructuradas con motivo y citas verificables dentro del texto suministrado.
+Tanto aprobar como rechazar requieren evidencia no vacía, incluso si la petición
+contiene únicamente negativos. Una cita prueba presencia textual, no la
+corrección semántica ni por sí sola la ausencia de un tema en toda la canción.
+La cobertura incompleta sigue impidiendo aprobar la letra completa.
+
+Un texto antiguo o una llamada de herramienta provoca un único reintento de
+formato; si persiste, el juez se abstiene. Si las citas faltan o son inventadas
+en ambos intentos, también se abstiene. Los fallos de transporte y otras salidas
+malformadas conservan estado de error, sin multiplicar llamadas al proveedor.
+El orquestador convierte además una decisión marcada \texttt{legacy} en abstención:
+no puede convertirse en aprobación seleccionada ni rechazo semántico.
+
+Las pruebas antiguas de ranking se actualizan para emitir decisiones JSON con
+citas; las de compatibilidad comprueban ahora abstención, aislamiento y ausencia
+de mutación. Las nuevas regresiones verifican recuperación tras reintento,
+negativos sin evidencia, herramientas antiguas, traducción incorrecta, negaciones
+compuestas y que una interpretación incierta no llegue a la búsqueda.
+El coste posible es más abstenciones y una segunda llamada en respuestas antiguas;
+el máximo sigue siendo dos por candidato y el refinamiento continúa desactivado
+por defecto. Las citas no sustituyen la calibración humana del juicio.
+
+\subsection{P04/P10/P12: evaluación humana preparada, sin etiquetas inventadas}
+\code{evaluation/annotations.py} exporta consultas, metadatos y letras del snapshot
+con grados y violaciones vacíos. Para audio exige escucha: no permite inferir
+relevancia sonora a partir de la letra. La importación exige declaración de
+revisión humana, anotador, consultas idénticas y generación/hashes coincidentes;
+valida IDs, grados y cobertura. Esa declaración es atribución, no prueba automática
+de que una persona revisó correctamente. Los archivos existentes no se sobrescriben.
+\code{evaluation.run --qrels} permite usar la revisión sin modificar el archivo
+original; una generación distinta bloquea la evaluación.
+Se conserva la distinción entre desconocido y grado cero. No se fabricaron
+anotaciones, por lo que relevancia y calibración permanecen abiertas.
+
+\subsection{P16: memoria del proceso y perfil real ejecutable}
+El perfil de control ahora registra working set RSS mediante la API de Windows
+(o \code{/proc/self/statm} en Linux), muestras de memoria y pico del proceso
+durante su vida. El pico de muestras puede perder aumentos breves; el pico de
+vida incluye inicialización. Los contadores CUDA, si están disponibles, cubren
+asignaciones Torch, no toda la memoria del controlador. No se importa Torch
+exclusivamente para medir un arranque bloqueado. No se añadieron dependencias.
+
+\code{evaluation/real_profile.py} ejecuta el runner real con muestreo de RSS, sin
+sustituir modelos por controles. Los pesos sólo se buscan localmente por defecto;
+la descarga requiere la opción explícita \code{--allow-model-downloads}.
+La ejecución realizada quedó bloqueada por \code{GROQ_API_KEY} ausente. Su memoria
+es de arranque, no de inferencia. El perfil de control sí mide RSS real de ese
+proceso, pero no permite extrapolar uso de memoria o latencia de modelos reales.
+
+\subsection{Estado de cierre y prioridad restante}
+Los dos controles de la auditoría dejan de reproducir los fallos. La suite y las
+series simuladas se vuelven a capturar con hashes de fuentes actuales, conservando
+los informes de bloques anteriores. La documentación TeX se comprueba
+estáticamente; no se declara compilación PDF ni revisión visual nueva de la web.
+La condición pendiente es configurar el proveedor localmente y realizar la
+anotación humana, después ejecutar y comparar modelos reales antes de activar
+refinamiento o afirmar calidad/rendimiento. E17--E19 conservan su prioridad y
+ubicación del bloque V; esta corrección no realiza ingesta real ni limpieza de datos.

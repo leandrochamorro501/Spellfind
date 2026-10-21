@@ -1,0 +1,134 @@
+\section{Ejecución del bloque III: P09--P12 y correcciones asignadas}
+\label{sec:bloque3}
+\textbf{Fecha: 18 de octubre de 2026.} Se implementó el control local de fallos,
+evidencia y presupuestos. P10 permanece abierto para calibración humana y P12
+para medir utilidad musical real. No se afirma superioridad de relevancia.
+
+\subsection{Reubicación y corrección de E14--E16}
+E14 pertenece al bloque II/P07: la identidad del plan debe distinguir cambios
+efectivos de una permutación de listas. La huella ahora canoniza descriptores y
+registros de restricciones sin borrar procedencia. La caché de recuperación usa
+la misma independencia de orden. Una prueba del grafo rechaza candidatos 1 y 2
+una sola vez, conserva la versión 1 y termina por ventana agotada; antes repetía
+el candidato 1 tres veces y creaba versiones 2 y 3. Un descriptor efectivamente
+distinto sigue cambiando la identidad. Esto no demuestra equivalencia semántica
+entre textos distintos: E13 continúa pendiente.
+
+E15 pertenece al bloque II/P05/P08: la salida de aclaración ahora verifica JSON
+finito igual que un plan listo. Números NaN/infinito y objetos opacos se rechazan;
+el orquestador conserva su fallback controlado. Se probaron ambas rutas y la
+serialización del estado final recuperado. Se conserva el rechazo explícito del
+dato inválido, sin sustituirlo por una confianza inventada.
+
+E16 pertenece al bloque I/P01/P02: los mensajes de router, workers y juez usan
+una salida que escapa símbolos incompatibles con la codificación de consola.
+Un diagnóstico deja de interrumpir una inicialización correcta. UTF-8 sigue
+siendo una opción operativa; en CP1252 algunos símbolos se ven escapados.
+Ambas codificaciones completaron las mismas 96 pruebas.
+
+\subsection{P09: recuperación parcial y continuidad}
+\textbf{Antes.} Una excepción de una rama abortaba la recuperación completa;
+un refinador inválido detenía el flujo. \textbf{Ahora.} Cada rama informa éxito,
+vacío, ausencia de solicitud o fallo. Los resultados útiles de la otra rama se
+conservan; sus pesos efectivos se renormalizan y se exponen junto a los pesos
+solicitados y la política. Las restricciones originales no se eliminan.
+Si falla el refinador, se conserva el plan válido y se deshabilitan nuevos
+intentos del refinador para esa solicitud. Si falla toda una nueva recuperación,
+se restaura el plan, versión y ranking obtenidos juntos en la última búsqueda
+válida, aplicando las exclusiones de esa versión.
+
+\textbf{Evidencia y contrapartida.} Pruebas del grafo y HTTP cubren fallos
+parciales, fallos de ambas ramas y restauración. Una petición mixta sigue
+informando sonido sin evaluar aunque la letra se apruebe. Esta política mejora
+continuidad, pero puede reducir cobertura y cambiar scores; no garantiza la
+misma calidad que disponer de ambas ramas. P13 debe explicar contribuciones.
+
+\subsection{P10: evidencia lírica, abstención y reintento acotado}
+\textbf{Antes.} El juez veía los primeros 3000 caracteres y emitía texto o una
+herramienta de rechazo. \textbf{Ahora.} Se solicita JSON con estado, motivo y
+citas literales. Las citas se contrastan con fragmentos realmente suministrados.
+Las letras de hasta 12000 caracteres se incluyen completas; las más largas
+aportan comienzo, centro y final dentro de ese presupuesto. La cobertura parcial
+impide aprobar el conjunto. La abstención no se transforma en rechazo semántico
+ni activa el refinador; puede continuar la revisión de otros candidatos.
+
+Un formato o evidencia inválidos permiten un solo reintento correctivo;
+una excepción del proveedor no se reintenta por esta capa. El cliente del juez
+desactiva sus reintentos internos y registra intentos de modelo. Se conserva
+compatibilidad con veredictos antiguos, etiquetados como \texttt{legacy}, sin
+atribuirles citas verificadas. Esta fue la decisión inicial del bloque;
+la sección~\ref{sec:correcciones_pendientes} documenta su retirada posterior.
+Los demás candidatos siguen sin evaluar.
+
+\textbf{Evidencia y contrapartida.} Una prueba encuentra y cita evidencia
+después del carácter 4000; otras cubren citas inventadas, cobertura incompleta,
+abstención, errores y el máximo de dos invocaciones. El contexto puede ser mayor
+que antes y el máximo de salida pasó de 256 a 1024 tokens; ello puede aumentar
+coste y latencia. Una cita exacta no prueba que el juicio semántico sea correcto.
+\texttt{evaluation/judge\_metrics.py} calcula falsos aprobados/rechazados,
+abstención y error solo con etiquetas humanas. Sin pares anotados devuelve
+métricas nulas: la calibración y E13 siguen pendientes, no se inventaron etiquetas.
+
+\subsection{P11: presupuestos independientes}
+\textbf{Antes.} Tres visitas a candidatos podían agotarse sin llamar al juez
+si faltaban metadatos; se buscaba una ventana fija. \textbf{Ahora.} Por solicitud
+hay límites separados: 20 visitas, 3 evaluaciones del juez (hasta 6 intentos de
+modelo por el reintento), 2 refinamientos y 1 ampliación de recuperación de
+top-10 a top-20 por rama. Las omisiones de metadatos no consumen evaluaciones
+del juez. Los contadores y el motivo de parada se exponen en la API.
+
+La ampliación solo se intenta al agotar una ventana saturada; se filtran las
+exclusiones previas. Agotar esa ventana no demuestra ausencia de canciones
+válidas en todo el catálogo; la API no declara agotamiento global.
+\textbf{Pruebas.} Cuatro metadatos ausentes antes de un candidato válido,
+presupuesto total de visitas, ampliación que encuentra un candidato nuevo y
+agotamiento de la ampliación. Revisar más candidatos puede consumir más trabajo;
+los límites son configurables al construir el grafo y no una estimación monetaria
+ni un límite global de todas las solicitudes HTTP del proveedor.
+
+\subsection{P12: comparación pareada y política de refinamiento}
+\textbf{Antes.} El refinador se invocaba tras rechazos sin evidencia de mejora
+musical. \textbf{Ahora.} Está desactivado por defecto en la aplicación; la opción
+\texttt{SPELLFIND\_ENABLE\_REFINEMENT=true} permite uso experimental. Solo se
+considera tras rechazo lírico, con contrato válido y presupuesto disponible.
+No se activa por abstención, metadatos ausentes ni recuperación acústica sola.
+
+Se capturaron 36 ejecuciones sin refinamiento y 36 con él, pareadas por consulta
+y repetición, con hashes iguales de fuentes, tests, datos y locks. Ambas series
+simuladas tuvieron 12 aprobaciones líricas, 6 validaciones parciales,
+12 recuperaciones acústicas y 6 aclaraciones, sin errores. El tratamiento añadió
+18 invocaciones al refinador y 18 búsquedas líricas; no cambió el número de
+evaluaciones del juez. Los veredictos y rankings son sintéticos: no demuestran
+mejor o peor relevancia. Los tiempos simulados y su dispersión se conservan en
+el informe, sin convertirlos en latencia de modelos o precio del proveedor.
+
+\texttt{evaluation/compare.py} rechaza snapshots distintos y muestra diferencias
+pareadas. La evaluación real escribió estado bloqueado por falta de
+\texttt{GROQ\_API\_KEY}; las etiquetas humanas siguen vacías. Mantener la opción
+desactivada limita trabajo adicional no justificado, pero renuncia a posibles
+beneficios todavía no medidos. Para decidir su activación rutinaria se requieren
+comparaciones reales de relevancia, violaciones negativas, abstención y coste,
+con anotaciones y condiciones comparables. P12 no queda cerrado por la simulación.
+
+\subsection{Verificación, compatibilidad y pendientes}
+\textbf{Archivos.} E14/E15 cambian \texttt{intent.py} y la clave de caché en
+\texttt{app.py}; E16 añade \texttt{console.py} y lo integra en router, workers
+y juez. P09/P11 usan \texttt{workflow.py}, \texttt{retrieval.py} y \texttt{app.py}.
+P10 cambia \texttt{judge.py}; P12 actualiza aplicación, ejemplo de configuración
+y \texttt{evaluation/run.py}, y añade comparación y métricas de calibración.
+La interfaz reconoce abstención. \texttt{tests/test\_block3.py} añade regresiones;
+se actualizan expectativas anteriores para la continuidad y presupuestos nuevos.
+
+\texttt{scripts/verify\_block3.py} ejecutó 96 pruebas con salida CP1252 y 96 con
+UTF-8, ambas series correctas. La evidencia está en \texttt{validation/block3/}.
+No se instalaron dependencias, descargaron pesos ni hicieron llamadas al modelo.
+Los informes de bloques anteriores y el diagnóstico original conservan su
+carácter histórico. El documento se actualizó en fuente; no se certifica en esta
+entrega una compilación PDF.
+
+Los estados y campos añadidos requieren que clientes reconozcan abstenciones,
+degradaciones y presupuestos. El nombre histórico \texttt{judge\_iterations}
+sigue contando evaluaciones; los intentos de modelo están en contadores separados.
+P13--P16 son el siguiente bloque de implementación. P10/P12 y la fidelidad
+semántica E13 mantienen sus verificaciones abiertas; no se renumeran ni se
+consideran resueltas al avanzar.

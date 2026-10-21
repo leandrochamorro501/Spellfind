@@ -1,0 +1,393 @@
+\documentclass[11pt,a4paper]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[spanish]{babel}
+\usepackage[margin=2.4cm]{geometry}
+\usepackage{lmodern,microtype,amsmath,booktabs,longtable,array}
+\usepackage{xcolor,hyperref,fancyhdr,enumitem}
+\definecolor{accent}{HTML}{5533A8}
+\hypersetup{colorlinks=true,linkcolor=accent,urlcolor=accent,citecolor=accent}
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{6pt}
+\setlength{\emergencystretch}{3em}
+\setlist{nosep,leftmargin=*}
+\setlist[description]{style=nextline,leftmargin=0pt,labelindent=0pt,labelsep=0pt,labelwidth=0pt,font=\small\bfseries}
+\makeatletter
+\renewcommand*\l@subsection{\@dottedtocline{2}{1.5em}{3.2em}}
+\makeatother
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[L]{\textcolor{accent}{SPELLFIND}}
+\fancyhead[R]{\small Documentación técnica}
+\fancyfoot[C]{\thepage}
+\setlength{\headheight}{14pt}
+\newcommand{\code}[1]{\nolinkurl{#1}}
+\title{\Huge\textcolor{accent}{SPELLFIND}\\[8pt]\Large Buscador semántico híbrido de música\\[12pt]\large Documentación técnica, evolución y evaluación crítica}
+\author{Proyecto de Rubén Carvajal, Leandro Chamorro\\y Alexandra Mendoza\\[6pt]\small OII465-1: LLMs, Fundamentos y Práctica}
+\date{Revisión: 20 de octubre de 2026}
+\begin{document}
+\maketitle
+\begin{abstract}
+SPELLFIND recupera canciones mediante significado lírico y descripciones de su sonido. Este informe reconstruye sus requisitos, documenta la implementación local y compara la aplicación Flask con dos alternativas de orquestación en LangGraph. Se contrastan el código, dos presentaciones académicas y el enunciado proporcionado por el usuario. Se distinguen las capacidades observadas, las afirmaciones históricas y el trabajo pendiente. La inspección estructural del catálogo identifica 258 canciones alineadas, con vectores de letras de 256 dimensiones y vectores acústicos de 512.
+\end{abstract}
+\vfill
+\textbf{Alcance.} El diagnóstico original fue estático. Las continuaciones registran cambios implementados, regresiones con LangGraph y modelos de control, e inferencia local real de Nomic, CLAP y Whisper. Se verifican ingesta técnica, mantenimiento y restauración en entornos aislados. No se reprodujeron los experimentos históricos ni se validó calidad musical con anotaciones humanas. La sección~\ref{sec:autonomo} identifica los resultados actuales y sus límites.
+\newpage
+\tableofcontents
+\newpage
+
+\section*{Lectura del estado actual}
+\addcontentsline{toc}{section}{Lectura del estado actual}
+El flujo soportado está en \code{workflow.py} y lo comparten la web y la consola.
+Las versiones A/B/C de las secciones comparativas corresponden al diagnóstico
+histórico, previo a las correcciones. Los borradores B y C están archivados en
+\code{experiments/}; los archivos con sus nombres antiguos invocan la CLI común.
+
+Los cambios 1--8 se explican individualmente en la sección~\ref{sec:evolucion},
+con conducta anterior, implementación, evidencia y contrapartidas. Las tareas
+E01--E16 de la sección~\ref{sec:extras} registran limitaciones y alternativas;
+ninguna se considera resuelta por estar documentada. E14--E16 cuentan con
+correcciones verificadas en la sección~\ref{sec:bloque3}; P10/P12 mantienen
+pendientes sus validaciones humanas y reales. P13--P15 incorporan pesos, filtros
+y evidencia visible; P16 aporta perfil local, con modelos reales pendientes
+(sección~\ref{sec:bloque4}). El orden de ejecución vigente es P01--P20, en cinco bloques de cuatro,
+definido en la sección~\ref{sec:plan}. Los números originales se conservan
+solo como referencias de trazabilidad.
+
+Hay correcciones de control verificadas y reducción de trabajo redundante por
+conteo. No se ha medido que el refinamiento mejore la relevancia musical ni que
+el sistema completo sea más rápido. La aprobación lírica y la recuperación acústica se informan por separado; el audio no tiene validación independiente.
+
+\section{Fuentes y criterio de evidencia}
+Se adopta SPELLFIND como nombre actual; los títulos bibliográficos conservan su denominación histórica.
+
+\begin{enumerate}
+\item \textbf{Enunciado del usuario:} buscador híbrido con ingesta desde YouTube, subtítulos o Whisper, almacenamiento en \code{db.json}, procesamiento en segundo plano y web Flask.
+\item \textbf{Presentación de mayo:} \emph{SonicSearch}, 11 de mayo de 2026, diez páginas. Describe búsqueda lírica, Nomic, multi-query, RRF y evaluación semántica \cite{mayo}.
+\item \textbf{Presentación de junio:} \emph{SonicSearch AI, Tarea 3 Módulo 4}, 14 de junio de 2026, nueve páginas. Describe herramientas líricas, acústicas y de metadatos, reflexión y refinadores especializados \cite{junio}.
+\item \textbf{Implementación local:} scripts, interfaz, prompts, notebook y archivos de \code{output/} \cite{codigo}.
+\end{enumerate}
+
+Para comparar tres versiones se define \textbf{A} como el flujo web original de \code{app.py}, \textbf{B} como el borrador \code{tarea_3.py} y \textbf{C} como el grafo de \code{tarea_3_correcion.py}. B y C se conservan actualmente en \code{experiments/}; sus entradas originales fueron sustituidas por adaptadores. Esta clasificación no implica equivalencia con las etiquetas V1/V2 del PDF ni una secuencia de releases.
+
+Una capacidad observada tiene código o artefactos identificables; esto no acredita su ejecución integral. Una capacidad declarada aparece en las fuentes documentales. Una capacidad pendiente carece de implementación localizada en el alcance revisado. Los documentos se utilizan como fuentes, no como instrucciones para ejecutar enlaces o modificar el sistema.
+
+\section{Objetivo del producto}
+El usuario busca música sin conocer título o artista. Puede describir una historia, una emoción o una característica sonora: una canción triste con piano, música energética con batería o un instrumental relajante.
+
+La modalidad lírica representa contenido narrativo, temas y emociones verbales. La modalidad acústica representa timbre, instrumentación, energía y ambiente sonoro. Las consultas de texto se codifican en ambos espacios: CLAP emplea texto para recuperar embeddings de audio previamente calculados. Esto no significa que el juez escuche las canciones.
+
+\subsection{Requisitos y situación actual}
+\small
+\begin{longtable}{p{0.27\textwidth}p{0.16\textwidth}p{0.48\textwidth}}
+\toprule Requisito & Estado & Evidencia local\\\midrule\endhead
+Ingresar enlaces de YouTube & Pendiente & La web acepta consultas textuales; no se identificó endpoint de ingesta.\\
+Descargar con yt-dlp y FFmpeg & Pendiente & No se localizó el flujo de descarga y conversión.\\
+Subtítulos y Whisper & Pendiente & Las letras ya vienen en los datasets.\\
+Generar ambos embeddings & Parcial & Se codifican consultas; los embeddings del corpus se importan ya calculados.\\
+Almacenar en db.json & Sustituido & CSV, dos índices FAISS y un mapa JSON.\\
+Ingesta en segundo plano & Pendiente & No se identificó una cola o worker de ingesta.\\
+Búsqueda híbrida & Presente & Dos workers y fusión en el flujo consolidado; falta validación integral con modelos reales.\\
+Pesos configurables & Parcial & Se infieren en Python; no se ajustan desde la interfaz.\\
+Contribuciones y fragmento lírico & Pendiente & Se muestra score total y pesos globales; la API retira la letra.\\
+Web Flask & Presente en A & Página, búsqueda y estado del motor.\\
+Reflexión y refinamiento & Parcial & Grafo común con reescritura selectiva; juez lírico y beneficio semántico sin medir.\\
+\bottomrule
+\end{longtable}
+\normalsize
+
+\section{Mapa de componentes}
+\begin{description}
+\item[\code{app.py}] Adaptador Flask, carga inicial, fusión e invocación del grafo común.
+\item[\code{router.py}] Planificación con Groq y LangChain, validación y fallback.
+\item[\code{semantic_search.py}] Nomic, consultas positivas y negativas, FAISS y RRF.
+\item[\code{clap_search.py}] Codificador textual CLAP y recuperación acústica.
+\item[\code{judge.py}] Juez lírico y herramienta de exclusión.
+\item[\code{align_and_index.py}] Descarga de datasets, alineación e índices.
+\item[\code{templates/index.html}] Búsqueda, estado, plan y tarjetas de resultados.
+\item[\code{tarea_3.py}] Adaptador a la CLI común; borrador histórico en \code{experiments/}.
+\item[\code{tarea_3_correcion.py}] Adaptador a la CLI común; grafo semántico histórico en \code{experiments/}.
+\item[\code{workflow.py}] Grafo común de planificación, recuperación, evaluación y refinamiento.
+\item[\code{refiner.py}] Reescritura por modalidad y validación de sus límites.
+\item[\code{resources.py}] Recursos compartidos por proceso y lookup de metadatos.
+\item[\code{search_contract.py}] Contrato de listas para planes y fallback.
+\item[\code{config.py}] Configuración centralizada y rutas ancladas al proyecto.
+\item[\code{vector_validation.py}] Validación numérica y correspondencia de artefactos.
+\item[\code{evaluation/}] Protocolo, fixtures y runner de la línea base.
+\item[\code{scripts/}] Verificación de entorno, generación de locks y aceptación.
+\item[\code{cli.py}] Entrada por consola al motor común.
+\item[\code{api_prompt.txt}] Prompt utilizado por el router web. El juez emplea un prompt embebido en Python; no debe suponerse que consume \code{juez_prompt.txt}.
+\item[\code{Untitled0.ipynb}] Material experimental complementario.
+\end{description}
+\code{reouter_tool.py} está vacío. El README, originalmente vacío, ahora describe contratos, operación y pruebas. La instalación se describe en \code{INSTALL.md}, \code{requirements.txt} y \code{install_dependencies.py}. Los repositorios externos con identificadores \code{aleshitajaja/sonic-search-*} conservan su nombre para mantener las referencias.
+
+\section{Datos e indexación}
+El pipeline autentica con Hugging Face, descarga metadatos y embeddings, y lista previews MP3. La selección prevista es
+\[
+I=I_{\mathrm{meta}}\cap I_{\mathrm{letras}}\cap I_{\mathrm{audio}}\cap I_{\mathrm{mp3}}.
+\]
+Los conjuntos se fusionan por \code{song_id}, se ordenan y se exportan. Los vectores se normalizan y se añaden a dos \code{IndexFlatIP}; con norma unitaria, el producto interno representa similitud coseno.
+
+\begin{itemize}
+\item \code{datos_alineados.csv}: identificador, título, artista, etiqueta, año y letra.
+\item \code{faiss_lyrics.index}: índice de letras.
+\item \code{faiss_audio.index}: índice de audio.
+\item \code{song_id_map.json}: posición FAISS a identificador de canción.
+\end{itemize}
+
+\subsection{Comprobaciones locales}
+Se comprobaron 258 filas, 258 identificadores únicos y 258 entradas del mapa; el orden del mapa coincide con el CSV. No hay letras vacías al eliminar espacios. Las cabeceras binarias indican formato \code{IxFI}, 258 vectores en cada índice, dimensión 256 en letras y 512 en audio. Estas verificaciones no sustituyen la validación numérica de cada embedding.
+
+La cifra histórica de 10\,000 canciones del PDF de mayo no describe el catálogo alineado incluido aquí. No se puede atribuir la reducción a una causa específica sin los datos originales y los registros del pipeline.
+
+\subsection{Límites del proceso}
+Si falla el listado de previews, el script anuncia que continuará sin filtrar por MP3, pero devuelve un conjunto vacío que después intersecta obligatoriamente: el resultado queda vacío. También faltan validaciones completas de duplicados antes de los merges, dimensiones, valores finitos y vectores nulos.
+
+La limpieza de letras, el prefijo \code{search_document:} y el lote de 16 aparecen en la presentación. El indexador local importa embeddings, por lo que no permite demostrar que tales pasos se aplicaron a los artefactos actuales. La exportación de archivos separados tampoco implementa una actualización transaccional del catálogo.
+
+\section{Versión A histórica: aplicación web híbrida}
+\begin{center}
+\fbox{\parbox{0.9\textwidth}{Consulta $\rightarrow$ Router $\rightarrow$ workers lírico y acústico $\rightarrow$ fusión $\rightarrow$ juez del primer candidato $\rightarrow$ respuesta web.}}
+\end{center}
+Los workers se ejecutan secuencialmente. Sus recursos se cargan bajo demanda y se conservan en variables de módulo. El motor Flask también carga índices y metadatos, de modo que existen copias de recursos.
+
+El router usa por defecto \code{meta-llama/llama-4-scout-17b-16e-instruct}, configurable con \code{GROQ_MODEL}. Lee el prompt local o lo descarga si falta. El prompt pide listas de textos en inglés; los comentarios y el fallback conservan un esquema distinto para \code{lyric_positive}, con campos \code{text} y \code{weight}.
+
+\subsection{Consultas positivas y negativas}
+Para una positiva $p$ y negativos $n_j$:
+\[
+u=e(p)-\sum_j e(n_j),\qquad \widehat{u}=u/\|u\|_2,
+\]
+cuando la norma no es nula. Nomic añade \code{search_query:}, trunca a 256 componentes y renormaliza. CLAP usa su propio espacio acústico.
+
+La técnica se llama ortogonal en algunos comentarios, pero implementa resta vectorial. Una proyección ortogonal sobre un negativo unitario sería $u-(u^\top n)n$. La resta no garantiza excluir un tema: cambia la dirección y requiere evaluación. Ambos workers descartan textos de cinco caracteres o menos, lo que puede eliminar conceptos válidos.
+
+\subsection{Multi-query y RRF}
+Cada positiva genera una lista de hasta $3K$ candidatos antes de fusionar; $K=10$. El RRF interno es
+\[
+R(d)=\sum_{q:\,d\in L_q}\frac{1}{60+\operatorname{rank}_{L_q}(d)},
+\]
+con posiciones desde uno. Cada worker devuelve los diez mejores. Estos scores son RRF, no similitudes coseno originales.
+
+\subsection{Fusión híbrida real}
+Los scores se normalizan por modalidad:
+\[
+N_m(d)=\frac{R_m(d)-\min R_m}{\max R_m-\min R_m}.
+\]
+Si todos son iguales, se asigna 1 a cada candidato presente. Si falta una canción en una rama, aporta cero. La aplicación calcula
+\[
+H(d)=w_LN_L(d)+w_AN_A(d)
++0.1\sum_{m:\,d\in L_m}\frac{1}{60+\operatorname{rank}_{L_m}(d)}.
+\]
+Por tanto, no implementa directamente la suma de cosenos del enunciado. Combina rankings normalizados y añade RRF.
+
+\begin{center}
+\begin{tabular}{lcc}
+\toprule Positivas presentes & $w_L$ & $w_A$\\\midrule
+Letras y audio & 0.6 & 0.4\\
+Solo letras & 0.9 & 0.1\\
+Solo audio & 0.1 & 0.9\\
+Ninguna & 0.7 & 0.3\\\bottomrule
+\end{tabular}
+\end{center}
+Los pesos dependen de la presencia de consultas, no de su confianza ni del éxito de cada worker. Si una rama falla, no se reajustan. El porcentaje de la interfaz es $100H(d)$ redondeado: no es probabilidad calibrada y puede superar 100 por el término RRF.
+
+\subsection{Reflexión y salida}
+El juez recibe consulta, vectores líricos y los primeros 3000 caracteres de la letra. Evalúa el top-1 y puede invocar \code{exclude_song}; el máximo es tres rondas. No recibe audio ni evidencia acústica explícita.
+
+Las consultas permanecen fijas: la reflexión descarta candidatos, pero no refina vectores. La búsqueda final ignora el conjunto de exclusiones y coloca primero la canción aprobada, si existe. Este comportamiento introduce una contradicción con el objetivo del juez.
+
+\section{Versión B histórica: borrador de grafo}
+El original archivado de \code{tarea_3.py} propone planificador, ejecutor, evaluador y refinadores semántico y auditivo. Su estado contempla feedback por modalidad. Sin embargo, presenta problemas visibles:
+\begin{itemize}
+\item La herramienta recibe \code{query}, pero usa \code{positive} y \code{negative} sin inicialización local.
+\item La anotación \code{Dict[str, Any, str]} tiene tres parámetros, en lugar de dos.
+\item Los imports \code{LLMNode} y \code{MessageNode}, y la construcción de nodos requieren comprobar compatibilidad con las dependencias declaradas.
+\item El grafo se construye sin asociar el esquema de estado y contiene una arista con argumento \code{router}; son puntos de incompatibilidad pendientes.
+\item El ejemplo llama \code{grafo_recomendacion.run} en vez de ejecutar la aplicación compilada.
+\item Solo aparece una herramienta lírica; no hay implementación completa de audio o de refinamiento auditivo.
+\end{itemize}
+Los modelos GPT-4 declarados en sus nodos expresan el diseño del borrador. El análisis sintáctico correcto no acredita que se puedan importar o ejecutar tales nodos.
+
+\section{Versión C histórica: grafo semántico con refinamiento}
+El original archivado de \code{tarea_3_correcion.py} utiliza \code{StateGraph} con el esquema \code{EstadoRecomendacionMusical}, funciones para los nodos y \code{ToolNode}. Su herramienta recibe listas positivas y negativas y devuelve objetos con identificador y score.
+\begin{center}
+\fbox{\parbox{0.9\textwidth}{Planificador $\rightarrow$ Ejecutor $\leftrightarrow$ Herramienta $\rightarrow$ Evaluador $\rightarrow$ fin o refinador semántico $\rightarrow$ Ejecutor.}}
+\end{center}
+
+Todos los roles usan \code{llama-3.3-70b-versatile} mediante Groq. Esta versión no incluye CLAP ni herramientas de filtros exactos.
+
+El planificador y el juez distinguen consultas literales y abstractas. Las primeras deben conservar frases o imágenes específicas; las segundas exploran situaciones narrativas. El refinador recibe la consulta y el feedback y propone nuevas frases. Los reductores de concatenación acumulan \code{sem_vector} y \code{sem_vector_neg}.
+
+\subsection{Mensajes, estado y memoria}
+Un wrapper adapta el canal \code{messages} de \code{ToolNode} a \code{executor_messages}. Este último se sobrescribe al empezar una ronda; los logs generales y veredictos se acumulan. La separación evita reutilizar llamadas antiguas de herramientas.
+
+Los nombres \code{texto_fuente}, \code{diapositivas_generadas} y \code{estado_compilacion} representan consulta, candidatos y fase de búsqueda. Provienen de una adaptación y dificultan la lectura del dominio musical.
+
+\code{MemorySaver} conserva checkpoints en RAM con un identificador de sesión. Permite inspeccionar estado durante la ejecución; no equivale a persistencia durable tras reiniciar.
+
+\subsection{Problemas residuales}
+El evaluador añade el top-1 a las exclusiones incluso cuando lo aprueba. La salida puede conservarlo porque termina, pero el estado queda semánticamente inconsistente.
+
+Al llegar a tres evaluaciones, el router toma la ruta denominada \code{aceptado} aunque el último veredicto sea insuficiente. Deben distinguirse aprobación, ausencia de candidatos, error y límite de iteraciones.
+
+Si no hay llamada de herramienta, el flujo puede avanzar al juez sin nuevos candidatos. El parseo JSON tiene manejo limitado y no valida exhaustivamente el esquema. La acumulación de vectores puede duplicarlos si el refinador vuelve a enviar los anteriores.
+
+\section{Comparación de las tres implementaciones históricas}
+\small
+\begin{longtable}{p{0.215\textwidth}p{0.225\textwidth}p{0.215\textwidth}p{0.225\textwidth}}
+\toprule Aspecto & A: Flask & B: borrador & C: semántica\\\midrule\endhead
+Entrada & Web y JSON & Ejemplo de consola & Consola y streaming\\
+Orquestación & Python y LangChain & Grafo propuesto & LangGraph compilado\\
+Letras & Nomic y FAISS & Herramienta incompleta & Nomic y FAISS\\
+Audio & CLAP y FAISS & Roles propuestos & Ausente\\
+Fusión híbrida & Implementada & Ausente & No aplica\\
+Reescritura de consultas & No & Prevista & Sí, lírica\\
+Juez & Letra truncada & Nodo declarado & Letra de metadatos\\
+Modelos & Scout por defecto & GPT-4 declarado & Llama 3.3 70B\\
+Memoria de grafo & No & No & Checkpoints en RAM\\
+Fin & Aprobación o límite & Incompleto & Suficiencia o límite\\
+Web & Sí & No & No\\
+Validación en esta revisión & Estática & Errores identificados & Estática\\
+\bottomrule
+\end{longtable}
+\normalsize
+
+\section{Discrepancias con las presentaciones}
+\subsection{Documento de mayo}
+La presentación describe un baseline lírico de 10\,000 canciones con Nomic y RRF; sitúa CLAP como trabajo futuro. A ya contiene audio y juez en línea, por lo que no coincide exactamente con ese baseline.
+
+Hay una ambigüedad interna: la página 3 menciona truncamiento a 512 tokens y la página 4 un máximo de 8192. Podrían corresponder a un límite operativo y al del modelo, pero la configuración efectiva no queda fijada. El código local no regenera embeddings del corpus y no resuelve esa diferencia.
+
+El fallback por expresión regular descrito en la página 5 tampoco es el router actual, que usa \code{JsonOutputParser} y un plan degradado. La evaluación experimental en escala 0--3 es diferente del juez binario de la aplicación.
+
+\subsection{Documento de junio}
+Se proponen tres herramientas: letras, audio y metadatos. El planificador y el refinador CLAP usarían Llama 3.1 8B; ejecutor y refinador semántico, GPT-OSS 120B; el juez, Gemini 2.5 Flash. También se declara un presentador determinista.
+
+No se observa esa combinación en las entradas locales: A utiliza dos workers y un juez lírico; B propone roles incompletos; C comparte un único modelo y solo busca letras. Tampoco se implementa el fan-out paralelo de los dos refinadores descrito en la página 8, ni un filtro duro por artista, género y rango de años.
+
+La afirmación histórica de cinco géneros debe verificarse sobre el catálogo concreto antes de restringir descriptores CLAP. El enlace remoto al código, en la última página, no se inspeccionó: sus posibles capacidades no se atribuyen a estos archivos.
+
+\section{Evaluación y reproducibilidad}
+\subsection{Resultados históricos de mayo}
+La página 9 informa siete consultas, groundedness promedio de 2.71/3, relevancia contextual de 2.00/3, ranking de 2.00/3, cero duplicados y score final global de 2.00/3. Son valores reportados, no recalculados para las 258 canciones.
+
+La fórmula combina relevancia contextual y ranking; groundedness se reporta por separado. La penalización por duplicados es ambigua: se describe como 0.2 por duplicado y también se multiplica por 0.2 en la fórmula. Debe precisarse si la variable contiene un conteo o una penalización ya ponderada.
+
+\subsection{Gráficos históricos de junio}
+La página 7 contiene gráficos sin tabla numérica. La lectura visual aproximada indica calidad de 3.3 para V1 y 3.6 para V2 sobre 10, y estabilidad Jaccard alrededor de 0.36 y 0.35. El acuerdo entre versiones cambia por categoría y es bajo en varias de ellas.
+
+No se dispone aquí de resultados crudos, número de repeticiones, intervalos de confianza ni correspondencia reproducible entre V1/V2 y A/B/C. Estos gráficos no prueban mejora causal ni superioridad estable; sus escalas no deben mezclarse con el 0--3 de mayo.
+
+\subsection{Plan de evaluación propuesto}
+Se recomienda un conjunto fijo con consultas líricas, acústicas, mixtas, literales y negativas. Cada corrida debe registrar catálogo, revisión de código, prompt, modelo, candidatos, exclusiones, latencia y llamadas. Métricas:
+\begin{itemize}
+\item Relevancia por modalidad y cumplimiento de restricciones.
+\item Recall@K y nDCG@K cuando haya juicios de referencia.
+\item Jaccard@K entre repeticiones con el mismo catálogo.
+\item Duplicados y reaparición de canciones rechazadas.
+\item Latencia en frío y caliente, errores y coste.
+\item Revisión humana para calibrar el juez automático.
+\end{itemize}
+La temperatura cero no garantiza por sí sola reproducibilidad del servicio. Recuperar canciones reales reduce invenciones de entidades, pero no elimina errores de interpretación o evaluación.
+
+\section{API y operación local}
+\subsection{Contrato HTTP}
+\begin{description}
+\item[\code{GET /}] Renderiza la plantilla de búsqueda.
+\item[\code{POST /search}] Recibe un JSON con \code{query}. El texto vacío produce 400. Devuelve plan, resultados, pesos y trazas del juez.
+\item[\code{GET /health}] Informa estado, error, canciones y vectores.
+\end{description}
+Cada resultado incluye metadatos, \code{score} y \code{score_pct}. La letra se elimina antes de responder. No se incluyen contribuciones individuales. El bloque II añade validación por modalidad y estados de recuperación acústica, validación parcial y reformulación. La respuesta actual incluye \code{n_lyrics} y \code{n_audio}, cantidades del último ranking por modalidad. Añade estados terminales, logs de refinamiento y \code{validation_scope: lyrics}; véase la sección~\ref{sec:evolucion}.
+
+En P02 se implementó validación de cuerpo, tipo y longitud: 400 para entrada inválida, 413 para cuerpo excesivo, 503 para motor no disponible o error controlado del flujo y 500 para fallo inesperado. La fábrica inicializa el motor en las entradas soportadas. La sección~\ref{sec:bloque1} registra los cambios y sus pruebas.
+
+\subsection{Arranque previsto}
+Estos comandos documentan el procedimiento previsto, no una instalación verificada:
+\begin{verbatim}
+cd SPELLFIND
+python -m venv .venv
+.\.venv\Scripts\activate
+python -m pip install -r requirements.txt
+python app.py
+\end{verbatim}
+Se necesita \code{GROQ_API_KEY} en el entorno o \code{.env}. El primer uso puede descargar modelos. Regenerar datos requiere acceso a Hugging Face y eventualmente \code{HF_TOKEN}.
+
+Las rutas de índices, catálogo, prompt y salida del indexador se resuelven desde el proyecto mediante \code{config.py}. \code{create_app} inicializa el catálogo; \code{wsgi.py} expone la aplicación inicializada para Waitress.
+
+El arranque local usa debug desactivado por defecto. Se añadió \code{.env.example}; el instalador utiliza el lock verificado. \code{INSTALL.md} documenta perfiles y arranque local/WSGI. No se ha certificado capacidad de carga ni disponibilidad de servicios externos.
+
+\section{Estado de los hallazgos iniciales}
+Los hallazgos H1--H7 del diagnóstico original se trataron en los bloques 1--8:
+exclusiones, aprobación, fallback, aislamiento, recomputación, carga de recursos
+y terminación. Sus límites y costes se detallan en la sección~\ref{sec:evolucion};
+tratado no equivale a superioridad demostrada en cualquier dimensión.
+
+La validación numérica se implementó en P03; la presentación detallada sigue pendiente en P13--P15. También
+queda por completar la arquitectura prevista en las diapositivas: filtros de
+metadatos, evidencia acústica suficiente y presentación por componente. La
+consolidación ya implementada no incluye esas capacidades ni ingesta de canciones.
+La sección~\ref{sec:extras} contiene la lista crítica de tareas adicionales.
+
+\section{Verificaciones realizadas y límites}
+La revisión inicial comprobó sintaxis Python, formato JSON del notebook,
+correspondencia CSV--mapa y cabeceras de índices. Después de los cambios 1--8
+se ejecutaron 32 pruebas aprobadas con LangGraph real y modelos/proveedores
+simulados; el análisis sintáctico final cubrió 17 archivos activos y de pruebas.
+La suite actual, tras el bloque II, pasa 72 pruebas. La evidencia y sus límites se explican en los registros por bloque.
+
+La comprobación anterior del grafo usó dependencias temporales. En P01 se preparó un entorno vacío, se verificaron imports reales y se generaron locks por perfil; véase la sección~\ref{sec:bloque1} y la evidencia de reinstalación. No se hicieron
+llamadas a Groq, descargas de los modelos musicales ni reconstrucciones del
+corpus. No se reprodujeron las métricas históricas ni se midieron mejoras reales
+de relevancia, latencia de extremo a extremo, consumo de GPU o coste monetario.
+El código que ejecuta la suite y sus casos está en \code{tests/}.
+
+La compilación LaTeX del documento depende del entorno del editor. La revisión
+inicial encontró una restricción del sandbox de Windows; guardar el fuente o
+abrir la vista previa no acredita una compilación correcta.
+
+\input{plan_mejoras}
+
+\input{bloque1}
+
+\input{bloque2}
+\input{bloque3}
+\input{bloque4}
+\input{bloque5}
+\input{correcciones_pendientes}
+\input{trabajo_autonomo}
+
+\input{evolucion}
+
+\appendix
+\section{Trazabilidad}
+\small
+\begin{longtable}{p{0.33\textwidth}p{0.57\textwidth}}
+\toprule Concepto & Evidencia\\\midrule\endhead
+YouTube, Whisper, db.json e ingesta & Enunciado del usuario.\\
+Corpus histórico y limpieza & PDF de mayo, pp. 3--4.\\
+Multi-query y RRF & PDF de mayo, pp. 5--6; workers locales.\\
+Evaluación 0--3 & PDF de mayo, pp. 8--9.\\
+Tres herramientas y roles & PDF de junio, pp. 4--5.\\
+Comparación V1/V2 & PDF de junio, p. 7; lectura visual aproximada.\\
+Refinamiento multimodal paralelo & PDF de junio, p. 8; capacidad declarada.\\
+Fusión y exclusiones web & \code{app.py}, \code{judge.py}.\\
+Contrato y fallback & \code{router.py}, \code{api_prompt.txt}.\\
+Grafo inicial y semántico & Originales de ambos scripts en \code{experiments/}.\\
+Cambios y tareas adicionales & Secciones~\ref{sec:evolucion} y~\ref{sec:extras}.\\
+258 canciones alineadas & Inspección de \code{output/}.\\
+\bottomrule
+\end{longtable}
+\normalsize
+\begin{thebibliography}{9}
+\bibitem{mayo} Rubén Carvajal, Leandro Chamorro y Alexandra Mendoza.
+\emph{SonicSearch: Sistema RAG avanzado para recomendación musical semántica}.
+OII465-1, 11 de mayo de 2026. Archivo suministrado: \code{SonicSearch.pdf}, 10 páginas.
+\bibitem{junio} Rubén Carvajal, Leandro Chamorro y Alexandra Mendoza.
+\emph{SonicSearch AI: Tarea 3 Módulo 4}. OII465-1, 14 de junio de 2026.
+Archivo suministrado: \code{Copia de SonicSearch_IA Tarea 3 Modulo 4.pdf}, 9 páginas.
+\bibitem{codigo} Proyecto SPELLFIND. Código y artefactos locales de la carpeta \code{SPELLFIND}.
+Inspección del 18 de octubre de 2026; sin revisión Git identificada para fijar el snapshot.
+\bibitem{enunciado} Enunciado del buscador semántico híbrido de música proporcionado por el usuario en esta conversación.
+\end{thebibliography}
+\end{document}
