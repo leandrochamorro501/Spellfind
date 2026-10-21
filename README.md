@@ -1,5 +1,7 @@
 # SPELLFIND
 
+*Proyecto universitario para asignatura de LLMs
+
 Buscador local de música por letra y sonido. Requiere **Windows x64, Python 3.12**, conexión a Internet para obtener los modelos y una clave de **Groq**.
 
 ## Ejecutar
